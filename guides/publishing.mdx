@@ -1,0 +1,122 @@
+---
+title: "Publishing Messages to Broccoli Queue"
+sidebarTitle: "Publishing"
+description: "Publish single messages or batches to any named topic using BroccoliQueue. Configure TTL, delay, priority, and scheduled delivery with PublishOptions."
+---
+
+Broccoli Queue provides flexible APIs for publishing messages to topics. You can send individual messages or batches, and configure various delivery options including time-to-live, delay, priority, and scheduled delivery times.
+
+To publish a single message to a topic, use the `publish` method:
+
+```rust
+let message = "Hello, World!";
+queue.publish("my_topic", None, &message, None).await?;
+```
+
+For sending multiple messages efficiently, use the `publish_batch` method:
+
+```rust
+let messages = vec!["Message 1", "Message 2", "Message 3"];
+queue.publish_batch("my_topic", None, messages, None).await?;
+```
+
+The `PublishOptions` struct allows you to customize how messages are handled:
+
+<Tabs>
+<Tab title="TTL">
+
+```rust
+use std::time::Duration;
+use broccoli_queue::PublishOptions;
+
+let options = PublishOptions::builder()
+    .ttl(Duration::from_secs(3600)) // Message expires after 1 hour
+    .build();
+
+queue.publish("my_topic", None, &message, Some(options)).await?;
+```
+</Tab>
+<Tab title="Delay">
+
+```rust
+use std::time::Duration;
+use broccoli_queue::PublishOptions;
+
+let options = PublishOptions::builder()
+    .delay(Duration::from_secs(30)) // Message delivered after 30 seconds
+    .build();
+
+queue.publish("my_topic", None, &message, Some(options)).await?;
+```
+</Tab>
+<Tab title="Priority">
+
+```rust
+use broccoli_queue::PublishOptions;
+
+let options = PublishOptions::builder()
+    .priority(1) // Highest priority (1-5, where 1 is highest)
+    .build();
+
+queue.publish("my_topic", None, &message, Some(options)).await?;
+```
+</Tab>
+<Tab title="Scheduled">
+
+```rust
+use time::OffsetDateTime;
+use broccoli_queue::PublishOptions;
+
+let scheduled_time = OffsetDateTime::now_utc() + time::Duration::minutes(10);
+let options = PublishOptions::builder()
+    .scheduled_at(scheduled_time) // Message delivered at specific time
+    .build();
+
+queue.publish("my_topic", None, &message, Some(options)).await?;
+```
+</Tab>
+</Tabs>
+
+Messages with higher priority (lower numerical value) are consumed before lower priority messages. When multiple messages have the same priority, they're processed in FIFO order.
+
+Here's a more comprehensive example from our publisher implementation:
+
+```rust
+use broccoli_queue::{BroccoliQueue, PublishOptions};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+#[derive(Serialize, Deserialize)]
+struct Job {
+    id: u64,
+    payload: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let queue = BroccoliQueue::builder()
+        .redis_url("redis://localhost:6379")
+        .build()
+        .await?;
+
+    let job = Job {
+        id: 1,
+        payload: "Process this job".to_string(),
+    };
+
+    // Publish with high priority and 1 hour TTL
+    let options = PublishOptions::builder()
+        .priority(1)
+        .ttl(Duration::from_secs(3600))
+        .build();
+
+    queue.publish("jobs", None, &job, Some(options)).await?;
+
+    println!("Job published successfully!");
+    Ok(())
+}
+```
+
+<Note>
+When publishing with a disambiguator (Some(String)), you're enabling fairness queuing which creates separate sub-queues for each disambiguator value. This ensures balanced processing across different tenants or entities. See the [Fairness Guide](/guides/fairness) for more details.
+</Note>

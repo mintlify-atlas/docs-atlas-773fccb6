@@ -1,0 +1,116 @@
+---
+title: "Understanding the BroccoliQueue Interface"
+sidebarTitle: "Queue"
+description: "BroccoliQueue is the central API surface in Broccoli. Learn how the builder pattern, connection pooling, and message lifecycle work together."
+---
+
+The `BroccoliQueue` is the primary interface for interacting with message brokers in the Broccoli Queue library. It provides a unified API for publishing, consuming, and managing messages regardless of the underlying broker implementation (Redis, RabbitMQ, or SurrealDB). This abstraction allows you to easily switch between different brokers without changing your application logic.
+
+## Creating a Queue with the Builder Pattern
+
+Creating a `BroccoliQueue` instance is done through a builder pattern that begins with specifying the broker URL:
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .build()
+    .await?;
+```
+
+The URL scheme determines which broker implementation will be used:
+- `redis://` → Redis broker
+- `amqp://` → RabbitMQ broker  
+- `ws://` or `mem://` → SurrealDB broker
+
+## Builder Configuration Options
+
+The builder provides several configuration options to customize your queue behavior:
+
+<Steps>
+  <Step>
+    <h3>Connection Pooling</h3>
+    <p>Control the number of connections maintained in the connection pool:</p>
+    ```rust
+    let queue = BroccoliQueue::builder("redis://localhost:6379")
+        .pool_connections(20)
+        .build()
+        .await?;
+    ```
+  </Step>
+  
+  <Step>
+    <h3>Retry Strategy</h3>
+    <p>Configure how failed messages are handled:</p>
+    ```rust
+    use broccoli_queue::queue::RetryStrategy;
+    
+    let retry_strategy = RetryStrategy::new()
+        .with_attempts(5)
+        .retry_failed(true);
+        
+    let queue = BroccoliQueue::builder("redis://localhost:6379")
+        .failed_message_retry_strategy(retry_strategy)
+        .build()
+        .await?;
+    ```
+  </Step>
+  
+  <Step>
+    <h3>Scheduling</h3>
+    <p>Enable message scheduling capabilities (requires broker-specific setup for RabbitMQ):</p>
+    ```rust
+    let queue = BroccoliQueue::builder("redis://localhost:6379")
+        .enable_scheduling(true)
+        .build()
+        .await?;
+    ```
+  </Step>
+</Steps>
+
+## Message Lifecycle
+
+The message lifecycle in Broccoli Queue follows these stages:
+
+<CardGroup>
+  <Card title="1. Publish">
+    Messages are published to a topic using `queue.publish()` or `queue.publish_batch()`.
+  </Card>
+  
+  <Card title="2. Queue">
+    Published messages are stored in the broker's queue, waiting to be consumed.
+  </Card>
+  
+  <Card title="3. Consume">
+    Consumers receive messages through `queue.consume()`, `queue.try_consume()`, or similar methods. The message enters the processing state.
+  </Card>
+  
+  <Card title="4. Acknowledge/Reject">
+    After processing, the consumer either acknowledges the message (removing it permanently) or rejects it (triggering retries or moving to a dead letter queue).
+  </Card>
+</CardGroup>
+
+## Thread Safety and Cloning
+
+The `BroccoliQueue` struct is designed to be shared across threads safely. It implements the `Clone` trait, which creates new handles to the same underlying broker connection without duplicating the connections themselves. This Arc-wrapped design makes it efficient to pass queue instances around your application:
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+use broccoli_queue::brokers::broker::BrokerMessage;
+
+// Create a queue instance
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .build()
+    .await?;
+
+// Clone the queue for use in different parts of your application
+let queue_clone = queue.clone();
+
+// Use in async contexts
+tokio::spawn(async move {
+    let message = queue_clone.consume::<String>("my-topic", None).await.unwrap();
+    // Process the message...
+});
+```
+
+This cloning capability enables easy integration with async frameworks like Tokio where you might need to move queue instances into spawned tasks.

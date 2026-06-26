@@ -1,0 +1,148 @@
+---
+title: "Scheduling and Delaying Messages in Broccoli Queue"
+sidebarTitle: "Scheduling"
+description: "Delay message delivery or schedule messages for a specific future time using PublishOptions in Broccoli Queue. Requires enable_scheduling on the queue builder."
+---
+
+Broccoli Queue supports delaying message delivery or scheduling messages for specific future times. This functionality is useful for scenarios like sending reminder notifications, implementing delayed processing workflows, or scheduling tasks for execution at precise times.
+
+To use scheduling features, you must first enable scheduling in your queue builder:
+
+```rust
+use broccoli_queue::BroccoliQueue;
+
+let queue = BroccoliQueue::builder()
+    .redis_url("redis://localhost:6379")
+    .enable_scheduling(true) // Enable scheduling features
+    .build()
+    .await?;
+```
+
+<Warning>
+When using RabbitMQ as your broker, scheduling requires the `delayed-exchange` plugin to be installed and enabled on your RabbitMQ server. Without this plugin, scheduling features will not work correctly.
+</Warning>
+
+## Delayed Delivery
+
+Delay message delivery by specifying a duration after which the message should be consumable:
+
+```rust
+use broccoli_queue::PublishOptions;
+use std::time::Duration;
+
+let options = PublishOptions::builder()
+    .delay(Duration::from_secs(60)) // Deliver after 60 seconds
+    .build();
+
+queue.publish("notifications", None, &message, Some(options)).await?;
+```
+
+During the delay period:
+- `try_consume` will return `None`
+- `consume` will block until the delay period expires
+
+## Scheduled Delivery
+
+Schedule messages for delivery at a specific time:
+
+```rust
+use broccoli_queue::PublishOptions;
+use time::OffsetDateTime;
+
+let scheduled_time = OffsetDateTime::now_utc() + time::Duration::hours(2);
+let options = PublishOptions::builder()
+    .scheduled_at(scheduled_time) // Deliver 2 hours from now
+    .build();
+
+queue.publish("scheduled_jobs", None, &job, Some(options)).await?;
+```
+
+## Complete Examples
+
+Here are examples showing both delay and scheduled delivery patterns:
+
+<Tabs>
+<Tab title="Delay Example">
+
+```rust
+use broccoli_queue::{BroccoliQueue, PublishOptions};
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+#[derive(Serialize, Deserialize)]
+struct Notification {
+    user_id: u64,
+    message: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let queue = BroccoliQueue::builder()
+        .redis_url("redis://localhost:6379")
+        .enable_scheduling(true)
+        .build()
+        .await?;
+
+    let notification = Notification {
+        user_id: 12345,
+        message: "Your order has been shipped!".to_string(),
+    };
+
+    // Send notification with 5-minute delay
+    let options = PublishOptions::builder()
+        .delay(Duration::from_secs(300)) // 5 minutes
+        .build();
+
+    queue.publish("notifications", None, &notification, Some(options)).await?;
+    
+    println!("Notification scheduled for 5 minutes from now");
+    Ok(())
+}
+```
+</Tab>
+<Tab title="Scheduled Example">
+
+```rust
+use broccoli_queue::{BroccoliQueue, PublishOptions};
+use serde::{Deserialize, Serialize};
+use time::OffsetDateTime;
+
+#[derive(Serialize, Deserialize)]
+struct MaintenanceTask {
+    task_id: String,
+    action: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let queue = BroccoliQueue::builder()
+        .redis_url("redis://localhost:6379")
+        .enable_scheduling(true)
+        .build()
+        .await?;
+
+    let task = MaintenanceTask {
+        task_id: "db-backup-001".to_string(),
+        action: "backup_database".to_string(),
+    };
+
+    // Schedule task for tomorrow at 2AM UTC
+    let now = OffsetDateTime::now_utc();
+    let scheduled_time = (now + time::Duration::days(1)).replace_time(time::Time::from_hms(2, 0, 0)?);
+    
+    let options = PublishOptions::builder()
+        .scheduled_at(scheduled_time)
+        .build();
+
+    queue.publish("maintenance", None, &task, Some(options)).await?;
+    
+    println!("Maintenance task scheduled for tomorrow 2AM UTC");
+    Ok(())
+}
+```
+</Tab>
+</Tabs>
+
+<Note>
+Only one scheduling option should be set at a time. If both `delay` and `scheduled_at` are specified, the behavior is undefined and may vary between broker implementations.
+</Note>

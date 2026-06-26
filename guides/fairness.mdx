@@ -1,0 +1,119 @@
+---
+title: "Fair Queue Processing with Disambiguators"
+sidebarTitle: "Fairness Queues"
+description: "Use Broccoli Queue's fairness queuing to ensure equal processing across tenants or entities. Publish with a disambiguator and consume with fairness enabled."
+---
+
+In multi-tenant applications or systems with varied message producers, a single tenant or producer can potentially overwhelm the queue, starving other tenants of processing time. Broccoli Queue addresses this with fairness queuing, which ensures balanced processing across different entities.
+
+Fairness queuing works by creating separate sub-queues for each entity (identified by a disambiguator). When consuming with fairness enabled, the consumer round-robins across these sub-queues, ensuring each gets equal processing time regardless of message volume.
+
+## Publishing with Fairness
+
+To enable fairness queuing, publish messages with a disambiguator:
+
+```rust
+// Publish with a disambiguator to enable fairness queuing
+queue.publish("jobs", Some("tenant-1".to_string()), &job, None).await?;
+queue.publish("jobs", Some("tenant-2".to_string()), &job, None).await?;
+queue.publish("jobs", Some("tenant-1".to_string()), &another_job, None).await?;
+```
+
+Internally, this creates three separate queues:
+- `jobs_tenant-1_queue`
+- `jobs_tenant-1_processing`
+- `jobs_tenant-1_failed`
+- `jobs_tenant-2_queue`
+- `jobs_tenant-2_processing`
+- `jobs_tenant-2_failed`
+
+## Consuming with Fairness
+
+Enable fairness when consuming messages:
+
+```rust
+use broccoli_queue::ConsumeOptions;
+
+let options = ConsumeOptions::builder()
+    .fairness(true)
+    .build();
+
+// This will fairly consume from all tenant queues
+let message = queue.consume("jobs", Some(options)).await?;
+```
+
+## Multi-tenant Example
+
+Here's a practical example of fairness queuing in a multi-tenant system:
+
+```rust
+use broccoli_queue::{BroccoliQueue, ConsumeOptions};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct TenantJob {
+    tenant_id: String,
+    task: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let queue = BroccoliQueue::builder()
+        .redis_url("redis://localhost:6379")
+        .build()
+        .await?;
+
+    // Publishing jobs from different tenants
+    let tenants = vec!["tenant-a", "tenant-b", "tenant-c"];
+    
+    for i in 0..100 {
+        let tenant = tenants[i % tenants.len()];
+        let job = TenantJob {
+            tenant_id: tenant.to_string(),
+            task: format!("Task #{}", i),
+        };
+        
+        // Publish with tenant as disambiguator
+        queue.publish("jobs", Some(tenant.to_string()), &job, None).await?;
+    }
+
+    // Consumer with fairness enabled
+    let consume_options = ConsumeOptions::builder()
+        .fairness(true)
+        .build();
+
+    // This consumer will fairly process jobs from all tenants
+    queue.process_messages(
+        "jobs",
+        Some(4), // 4 concurrent workers
+        Some(consume_options),
+        |message: BrokerMessage<TenantJob>| async move {
+            println!("Processing {}'s job: {}", 
+                     message.payload.tenant_id, 
+                     message.payload.task);
+            Ok::<(), BroccoliError>(())
+        }
+    ).await?;
+
+    Ok(())
+}
+```
+
+## Monitoring Fairness
+
+You can monitor fairness by checking queue sizes:
+
+```rust
+// Get sizes of all disambiguator queues
+let queue_sizes: HashMap<String, u64> = queue.size("jobs")?;
+println!("Queue sizes: {:?}", queue_sizes);
+
+// Example output:
+// {"tenant-a": 35, "tenant-b": 33, "tenant-c": 32}
+```
+
+<Warning>
+Fairness queuing is currently only supported by the Redis broker implementation. Other brokers like RabbitMQ and SurrealDB do not support this feature yet.
+</Warning>
+
+With fairness enabled, even if one tenant floods the queue with thousands of messages, other tenants will still get their fair share of processing time, preventing any single tenant from monopolizing resources.

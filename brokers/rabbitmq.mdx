@@ -1,0 +1,139 @@
+---
+title: "RabbitMQ Broker for Broccoli Queue"
+sidebarTitle: "RabbitMQ"
+description: "Use RabbitMQ as the message broker for Broccoli Queue. Enable the rabbitmq feature flag and configure AMQP connection URL and connection pool settings."
+---
+
+Broccoli Queue supports RabbitMQ as a message broker backend, leveraging its robust messaging capabilities and enterprise features. RabbitMQ provides reliable message delivery with support for priority queuing and message scheduling (with the delayed message exchange plugin).
+
+## Feature Flag Setup
+
+To use RabbitMQ, you need to enable the `rabbitmq` feature flag:
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.4", default-features = false, features = ["rabbitmq"] }
+
+# To enable both RabbitMQ and management APIs
+# broccoli_queue = { version = "0.4", default-features = false, features = ["rabbitmq", "management"] }
+```
+
+## Connection Configuration
+
+Connect to RabbitMQ using AMQP URLs:
+
+```rust
+use broccoli_queue::prelude::*;
+
+let broker_url = "amqp://guest:guest@localhost:5672/%2f";
+// Format: amqp://username:password@host:port/vhost
+
+let queue = BroccoliQueue::builder()
+    .broker_url(broker_url)
+    .build()
+    .await?;
+```
+
+## Connection Pooling
+
+The RabbitMQ broker uses `deadpool-lapin` for connection pooling with a default pool size of 10 connections:
+
+```rust
+let queue = BroccoliQueue::builder()
+    .broker_url("amqp://guest:guest@localhost:5672/%2f")
+    .pool_connections(20) // Customize pool size
+    .build()
+    .await?;
+```
+
+## Message Scheduling
+
+<Warning>
+
+Message scheduling in RabbitMQ requires the [delayed message exchange plugin](https://www.rabbitmq.com/blog/2015/04/16/scheduling-messages-with-rabbitmq). Without this plugin, scheduling features will be ignored.
+
+</Warning>
+
+To enable scheduling, make sure the plugin is installed and running, then configure your queue:
+
+```rust
+let queue = BroccoliQueue::builder()
+    .broker_url("amqp://guest:guest@localhost:5672/%2f")
+    .enable_scheduling(true) // Enable scheduling (requires delayed exchange plugin)
+    .build()
+    .await?;
+```
+
+## Supported Features
+
+<Note>
+
+- **Priority Queuing**: ✓ Messages can be assigned priorities 1-5
+- **Message Scheduling**: ✓ With delayed message exchange plugin
+- **Fairness/Disambiguators**: ✗ Not supported with RabbitMQ
+- **Management APIs**: ✓ Full access to queue inspection and administration
+- **Queue Size Metrics**: ✗ Not implemented
+
+</Note>
+
+<Warning>
+
+Fairness/disambiguators are NOT supported with the RabbitMQ broker. If you require fair message distribution across multiple producers, consider using Redis instead.
+
+</Warning>
+
+## Example Usage
+
+```rust
+use broccoli_queue::prelude::*;
+use std::time::Duration;
+use tokio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize queue with RabbitMQ broker
+    let queue = BroccoliQueue::builder()
+        .broker_url("amqp://guest:guest@localhost:5672/%2f")
+        .pool_connections(15)
+        .enable_scheduling(true) // Requires delayed exchange plugin
+        .retry_attempts(3)
+        .build()
+        .await?;
+
+    // Publish a message with delay
+    let message_id = queue.publish(
+        "tasks",
+        "process_data",
+        Some(PublishOptions {
+            delay: Some(Duration::from_secs(60)), // Process in 1 minute
+            priority: Some(2),
+            ..Default::default()
+        })
+    ).await?;
+
+    println!("Published delayed message with ID: {}", message_id);
+
+    // Consume a message
+    let message = queue.consume("tasks", None).await?;
+    println!("Consumed message: {:?}", message.payload);
+    
+    // Process the message...
+    
+    // Acknowledge completion
+    queue.acknowledge("tasks", message).await?;
+
+    Ok(())
+}
+```
+
+## Local Development with Docker
+
+For local development, you can use the provided Dockerfile with the RabbitMQ delayed message exchange plugin pre-installed:
+
+```bash
+# Build the RabbitMQ image with required plugins
+docker build -t broccoli-rabbitmq -f Dockerfile.rabbitmq .
+
+# Run the container
+docker run -p 5672:5672 -p 15672:15672 broccoli-rabbitmq
+```

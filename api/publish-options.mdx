@@ -1,0 +1,198 @@
+---
+title: "PublishOptions — Message Delivery Configuration"
+sidebarTitle: "PublishOptions"
+description: "Configure TTL, delivery delay, scheduled time, and priority for messages published with Broccoli Queue using PublishOptions and PublishOptionsBuilder."
+---
+
+PublishOptions allows you to configure various aspects of message delivery when publishing messages with Broccoli Queue. You can set time-to-live, delivery delays, scheduled times, and message priorities. These options give you fine-grained control over when and how your messages are delivered to consumers.
+
+## PublishOptions Structure
+
+```rust
+pub struct PublishOptions {
+    pub ttl: Option<Duration>,
+    pub priority: Option<u8>,
+    pub delay: Option<Duration>,
+    pub scheduled_at: Option<OffsetDateTime>,
+}
+```
+
+<ParamField name="ttl" type="Option<Duration>">
+Time-to-live for the message. After this duration, the message will be automatically removed from the queue.
+</ParamField>
+
+<ParamField name="priority" type="Option<u8>">
+Message priority level. This is a number between 1 and 5, where 1 is the highest priority and 5 is the lowest.
+<Warning>
+Panics if the priority is not between 1 and 5.
+</Warning>
+</ParamField>
+
+<ParamField name="delay" type="Option<Duration>">
+Delay before the message is published. The message will be queued but not delivered until this delay has passed.
+</ParamField>
+
+<ParamField name="scheduled_at" type="Option<OffsetDateTime>">
+Specific time for the message to be published. The message will be queued but not delivered until this time is reached.
+</ParamField>
+
+<Note>
+Only one of `delay` or `scheduled_at` should typically be set. If both are set, the behavior depends on the underlying broker implementation.
+</Note>
+
+## PublishOptionsBuilder
+
+PublishOptions are constructed using the builder pattern. Start by calling `PublishOptions::builder()` and chain the desired configuration methods.
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::Duration;
+use time::OffsetDateTime;
+
+let options = PublishOptions::builder()
+    .ttl(Duration::hours(1))
+    .priority(2)
+    .delay(Duration::minutes(30))
+    .build();
+```
+
+### Builder Methods
+
+<ParamField name="ttl" type="const fn(Duration) -> Self">
+Sets the time-to-live duration for the message.
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::Duration;
+
+let options = PublishOptions::builder()
+    .ttl(Duration::minutes(30))  // Message expires after 30 minutes
+    .build();
+```
+</ParamField>
+
+<ParamField name="delay" type="const fn(Duration) -> Self">
+Sets a delay before the message is published.
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::Duration;
+
+let options = PublishOptions::builder()
+    .delay(Duration::hours(1))  // Message won't be delivered for 1 hour
+    .build();
+```
+</ParamField>
+
+<ParamField name="schedule_at" type="const fn(OffsetDateTime) -> Self">
+Sets a specific time for the message to be published.
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::OffsetDateTime;
+
+let future_time = OffsetDateTime::now_utc() + time::Duration::days(1);
+let options = PublishOptions::builder()
+    .schedule_at(future_time)  // Message will be delivered tomorrow
+    .build();
+```
+</ParamField>
+
+<ParamField name="priority" type="fn(u8) -> Self">
+Sets the priority level for the message (1-5).
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+
+let options = PublishOptions::builder()
+    .priority(1)  // Highest priority
+    .build();
+```
+
+<Warning>
+Panics if the priority is not between 1 and 5.
+</Warning>
+</ParamField>
+
+<ParamField name="build" type="const fn() -> PublishOptions">
+Builds the PublishOptions with the configured values.
+</ParamField>
+
+## Usage Examples
+
+### Basic TTL Configuration
+
+Set a time-to-live of 2 hours for messages:
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::Duration;
+
+let options = PublishOptions::builder()
+    .ttl(Duration::hours(2))
+    .build();
+
+queue.publish("my-topic", None, &"Hello", Some(options)).await?;
+```
+
+### Delayed Message Publishing
+
+Publish a message that won't be delivered for 30 minutes:
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::Duration;
+
+let options = PublishOptions::builder()
+    .delay(Duration::minutes(30))
+    .build();
+
+queue.publish("my-topic", None, &"Delayed message", Some(options)).await?;
+```
+
+### Scheduled Message Publishing
+
+Schedule a message to be published at a specific time:
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::{OffsetDateTime, Duration};
+
+let scheduled_time = OffsetDateTime::now_utc() + Duration::days(1);  // Tomorrow
+let options = PublishOptions::builder()
+    .schedule_at(scheduled_time)
+    .build();
+
+queue.publish("my-topic", None, &"Scheduled message", Some(options)).await?;
+```
+
+### Priority Messages
+
+Publish a high-priority message:
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+
+let options = PublishOptions::builder()
+    .priority(1)  // Highest priority
+    .build();
+
+queue.publish("my-topic", None, &"Urgent message", Some(options)).await?;
+```
+
+### Combined Configuration
+
+Combine multiple options for complex delivery requirements:
+
+```rust
+use broccoli_queue::queue::PublishOptions;
+use time::{Duration, OffsetDateTime};
+
+let options = PublishOptions::builder()
+    .ttl(Duration::hours(24))           // Expires after 24 hours
+    .priority(2)                        // High priority
+    .delay(Duration::minutes(10))       // Wait 10 minutes before delivery
+    .build();
+
+queue.publish("my-topic", None, &"Important delayed message", Some(options)).await?;
+```

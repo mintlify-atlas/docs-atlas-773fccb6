@@ -1,0 +1,112 @@
+---
+title: "Messages and Payloads in Broccoli Queue"
+sidebarTitle: "Messages"
+description: "Understand BrokerMessage structure, task IDs, payload serialization, retry attempts tracking, and the disambiguator field for fairness queuing."
+---
+
+Messages in Broccoli Queue are represented by the `BrokerMessage<T>` struct, which wraps your payload data with metadata needed for reliable message processing. Each message contains important tracking information that helps ensure messages are delivered and processed correctly, even in failure scenarios.
+
+## BrokerMessage Structure
+
+The `BrokerMessage<T>` struct contains several key fields:
+
+```rust
+struct BrokerMessage<T: Clone> {
+    /// Unique identifier for the message (UUID v4)
+    pub task_id: uuid::Uuid,
+    
+    /// The actual message content
+    pub payload: T,
+    
+    /// Number of processing attempts made
+    pub attempts: u8,
+    
+    /// Disambiguator for message fairness (optional)
+    pub disambiguator: Option<String>,
+}
+```
+
+## Payload Requirements
+
+Your message payloads must implement several traits to work with Broccoli Queue:
+
+- `Clone` - To allow message duplication during retries
+- `serde::Serialize` - To convert the payload to JSON for storage
+- `serde::DeserializeOwned` - To reconstruct the payload from JSON when consuming
+
+Here's an example of a valid payload type:
+
+```rust
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+struct JobPayload {
+    id: String,
+    task_name: String,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+```
+
+## Message Identity and Serialization
+
+Each message gets a unique `task_id` (UUID v4) when created with `BrokerMessage::new()`. This identifier remains consistent throughout the message's lifetime, even across retries:
+
+```rust
+use broccoli_queue::brokers::broker::BrokerMessage;
+
+let payload = "Hello, World!".to_string();
+let message = BrokerMessage::new(payload, None);
+println!("Message ID: {}", message.task_id);
+```
+
+Internally, messages are serialized to JSON format using the `InternalBrokerMessage` struct, which stringifies the payload for transmission through the broker.
+
+## Retry Tracking
+
+The `attempts` field tracks how many times a message has been processed, starting at 0 for new messages. Each time a message is rejected (using `queue.reject()`), this counter increments by 1:
+
+```rust
+// First attempt - attempts = 0
+let message = queue.consume::<String>("my-topic", None).await?;
+assert_eq!(message.attempts, 0);
+
+// After one rejection and redelivery - attempts = 1
+let message = queue.consume::<String>("my-topic", None).await?;
+assert_eq!(message.attempts, 1);  // Incremented after previous rejection
+```
+
+This counter can be used in your message handlers to implement custom retry logic or circuit breakers.
+
+## Fairness Queuing with Disambiguator
+
+The optional `disambiguator` field allows for fairness queuing, particularly useful when processing messages from different customers or tenants. Messages with the same disambiguator value are processed in a round-robin fashion to prevent any single entity from monopolizing processing resources:
+
+```rust
+use broccoli_queue::brokers::broker::BrokerMessage;
+
+// Create messages with different disambiguators for fairness
+let customer_a_msg = BrokerMessage::new(
+    "Process order".to_string(), 
+    Some("customer-a".to_string())
+);
+
+let customer_b_msg = BrokerMessage::new(
+    "Process refund".to_string(), 
+    Some("customer-b".to_string())
+);
+```
+
+When consuming messages, you can enable fairness queuing through `ConsumeOptions`:
+
+```rust
+use broccoli_queue::queue::ConsumeOptions;
+
+let options = ConsumeOptions::builder()
+    .fairness(true)
+    .build();
+
+let message = queue.consume::<String>("orders", Some(options)).await?;
+if let Some(disambiguator) = message.disambiguator {
+    println!("Processing message for {}", disambiguator);
+}
+```
+
+This ensures fair resource distribution when processing high-volume workloads from multiple sources.

@@ -1,0 +1,183 @@
+---
+title: "RetryStrategy — Failed Message Retry Configuration"
+sidebarTitle: "RetryStrategy"
+description: "Configure retry behavior for failed messages in Broccoli Queue. Set max attempts, enable or disable retries, and use the default 3-attempt strategy."
+---
+
+RetryStrategy allows you to configure how failed messages are handled in Broccoli Queue. By default, failed messages are retried up to 3 times before being moved to a failed queue. You can customize this behavior by setting the maximum number of retry attempts or disabling retries altogether.
+
+## RetryStrategy Structure
+
+```rust
+pub struct RetryStrategy {
+    pub retry_failed: bool,
+    pub attempts: Option<u8>,
+}
+```
+
+<ParamField name="retry_failed" type="bool" defaultValue="true">
+Whether failed messages should be retried. If false, failed messages are immediately moved to the failed queue without any retry attempts.
+</ParamField>
+
+<ParamField name="attempts" type="Option<u8>" defaultValue="Some(3)">
+Maximum number of retry attempts. If None, defaults to 3 attempts. Set to Some(0) for no retries.
+</ParamField>
+
+## Default Behavior
+
+By default, RetryStrategy is configured with 3 retry attempts and retries enabled:
+
+```rust
+use broccoli_queue::queue::RetryStrategy;
+
+// These are equivalent:
+let strategy = RetryStrategy::default();
+let strategy = RetryStrategy::new();
+let strategy = RetryStrategy {
+    retry_failed: true,
+    attempts: Some(3),
+};
+```
+
+## Builder Methods
+
+<ParamField name="new" type="const fn() -> Self">
+Creates a new retry strategy with default settings (3 attempts, retry enabled).
+
+```rust
+use broccoli_queue::queue::RetryStrategy;
+
+let strategy = RetryStrategy::new();
+```
+</ParamField>
+
+<ParamField name="with_attempts" type="const fn(u8) -> Self">
+Sets the maximum number of retry attempts.
+
+```rust
+use broccoli_queue::queue::RetryStrategy;
+
+let strategy = RetryStrategy::new().with_attempts(5);  // 5 retry attempts
+```
+</ParamField>
+
+<ParamField name="retry_failed" type="const fn(bool) -> Self">
+Enables or disables message retrying.
+
+```rust
+use broccoli_queue::queue::RetryStrategy;
+
+let strategy = RetryStrategy::new().retry_failed(false);  // No retries
+```
+</ParamField>
+
+## What Happens When Attempts Are Exhausted
+
+When a message has been retried the maximum number of times without success:
+
+1. The message is moved to a special failed queue named `{topic}_failed`
+2. The message can be inspected, fixed, and republished if needed
+3. The original message is preserved with all its metadata and attempt count
+
+## Usage Examples
+
+### Default Retry Strategy
+
+Use the default retry behavior (3 attempts):
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, RetryStrategy};
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .failed_message_retry_strategy(RetryStrategy::default())
+    .build()
+    .await?;
+```
+
+### Custom Retry Count
+
+Configure a custom number of retry attempts:
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, RetryStrategy};
+
+let strategy = RetryStrategy::new().with_attempts(5);  // 5 attempts
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .failed_message_retry_strategy(strategy)
+    .build()
+    .await?;
+```
+
+### Disable Retries Completely
+
+Disable retries so failed messages go straight to the failed queue:
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, RetryStrategy};
+
+let strategy = RetryStrategy::new().retry_failed(false);
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .failed_message_retry_strategy(strategy)
+    .build()
+    .await?;
+```
+
+### No Retries with Zero Attempts
+
+Alternative way to disable retries:
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, RetryStrategy};
+
+let strategy = RetryStrategy::new().with_attempts(0);
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .failed_message_retry_strategy(strategy)
+    .build()
+    .await?;
+```
+
+### Complex Retry Configuration
+
+Configure retries with custom settings:
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, RetryStrategy};
+
+let strategy = RetryStrategy::new()
+    .retry_failed(true)
+    .with_attempts(10);
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .failed_message_retry_strategy(strategy)
+    .build()
+    .await?;
+```
+
+## Best Practices
+
+### Choosing Retry Count
+
+Consider these factors when choosing retry counts:
+- **Transient failures**: Network glitches, temporary resource unavailability (higher retry count)
+- **Persistent failures**: Programming bugs, permanent resource issues (lower retry count or no retries)
+- **Processing cost**: Expensive operations might warrant fewer retries
+
+### When to Disable Retries
+
+Disable retries when:
+- Immediate human intervention is required for failed messages
+- Failures are consistently deterministic (retrying won't help)
+- Speed of failure reporting is more important than automatic recovery
+
+### Monitoring Failed Messages
+
+Always monitor your failed queues, as they contain messages that couldn't be processed despite retries:
+
+```rust
+// Process failed messages separately
+#[cfg(feature = "management")]
+let failed_status = queue.queue_status("my-topic_failed".to_string(), None).await?;
+```

@@ -1,0 +1,244 @@
+---
+title: "Consuming and Processing Messages from Broccoli Queue"
+sidebarTitle: "Consuming"
+description: "Consume messages from Broccoli Queue using blocking, non-blocking, batch, and process_messages patterns. Handle acknowledge, reject, and cancel operations."
+---
+
+Broccoli Queue offers several approaches for consuming messages, each suited for different use cases. From simple blocking consumption to automated worker processes, you can choose the pattern that best fits your application needs.
+
+## Consumption Patterns
+
+Broccoli Queue provides four main ways to consume messages:
+
+### 1. Blocking Consumption
+
+The `consume` method blocks until a message is available:
+
+```rust
+use broccoli_queue::BroccoliQueue;
+
+let message: BrokerMessage<Job> = queue.consume("jobs", None).await?;
+println!("Received: {:?}", message.payload);
+
+// Process the message
+// ...
+
+// Acknowledge successful processing
+queue.acknowledge("jobs", message).await?;
+```
+
+### 2. Non-blocking Consumption
+
+The `try_consume` method returns immediately with an `Option`:
+
+```rust
+match queue.try_consume("jobs", None).await? {
+    Some(message) => {
+        // Process the message
+        queue.acknowledge("jobs", message).await?;
+    }
+    None => {
+        // No message available
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
+}
+```
+
+### 3. Batch Consumption (Blocking)
+
+The `consume_batch` method collects messages until reaching `batch_size` or `timeout`:
+
+```rust
+use std::time::Duration;
+
+let messages: Vec<BrokerMessage<Job>> = queue
+    .consume_batch("jobs", 10, Duration::from_secs(5), None)
+    .await?;
+
+for message in messages {
+    // Process each message
+    queue.acknowledge("jobs", message).await?;
+}
+```
+
+### 4. Batch Consumption (Non-blocking)
+
+The `try_consume_batch` method returns immediately with whatever messages are available (up to batch_size):
+
+```rust
+let messages: Vec<BrokerMessage<Job>> = queue
+    .try_consume_batch("jobs", 10, None)
+    .await?;
+
+for message in messages {
+    // Process each message
+    queue.acknowledge("jobs", message).await?;
+}
+```
+
+## Automated Processing
+
+For building worker services, the `process_messages` method provides a convenient loop:
+
+```rust
+use broccoli_queue::BroccoliQueue;
+
+queue.process_messages(
+    "jobs",
+    Some(4), // Concurrency level
+    None,    // Consume options
+    |message: BrokerMessage<Job>| async move {
+        // Process the message
+        println!("Processing job: {}", message.payload.id);
+        Ok::<(), BroccoliError>(())
+    }
+).await?;
+```
+
+For more complex scenarios with separate success/error handling:
+
+```rust
+queue.process_messages_with_handlers(
+    "jobs",
+    Some(4),
+    None,
+    |message: BrokerMessage<Job>| async move {
+        // Process the message
+        // Return Result indicating success/failure
+        Ok(message)
+    },
+    |message: BrokerMessage<Job>| async move {
+        // Called on successful processing
+        println!("Successfully processed job: {}", message.payload.id);
+        Ok::<(), BroccoliError>(())
+    },
+    |error, message| async move {
+        // Called when processing fails
+        eprintln!("Failed to process job {}: {:?}", message.payload.id, error);
+        Ok::<(), BroccoliError>(())
+    }
+).await?;
+```
+
+## Message Lifecycle
+
+After consuming a message, it moves to a processing queue and must be explicitly acknowledged or rejected:
+
+```rust
+let message = queue.consume("jobs", None).await?;
+
+match process_job(&message.payload) {
+    Ok(_) => {
+        // Mark as successfully processed
+        queue.acknowledge("jobs", message).await?;
+    }
+    Err(e) => {
+        // Mark as failed processing
+        queue.reject("jobs", message).await?;
+    }
+}
+```
+
+## Consumption Options
+
+Customize consumption behavior using `ConsumeOptions`:
+
+<Tabs>
+<Tab title="Auto ACK">
+
+```rust
+use broccoli_queue::ConsumeOptions;
+
+// Automatically acknowledge messages after successful consumption
+let options = ConsumeOptions::builder()
+    .auto_ack(true)
+    .build();
+
+let message = queue.consume("jobs", Some(options)).await?;
+// No need to manually call acknowledge
+```
+</Tab>
+<Tab title="Handler ACK">
+
+```rust
+// Delegate acknowledgment to another actor
+let options = ConsumeOptions::builder()
+    .handler_ack(false)
+    .build();
+
+let message = queue.consume("jobs", Some(options)).await?;
+// You must handle acknowledgment elsewhere
+```
+</Tab>
+<Tab title="Fairness">
+
+```rust
+// Enable fair consumption across disambiguators
+let options = ConsumeOptions::builder()
+    .fairness(true)
+    .build();
+
+let message = queue.consume("jobs", Some(options)).await?;
+```
+</Tab>
+<Tab title="Wait Time">
+
+```rust
+use std::time::Duration;
+
+// Allow interruption during long waits
+let options = ConsumeOptions::builder()
+    .consume_wait(Duration::from_secs(30))
+    .build();
+
+let message = queue.consume("jobs", Some(options)).await?;
+```
+</Tab>
+</Tabs>
+
+## Canceling Messages
+
+Remove a message by ID before it's consumed:
+
+```rust
+queue.cancel("jobs", "message-id-123").await?;
+```
+
+Here's a complete consumer example:
+
+```rust
+use broccoli_queue::{BroccoliQueue, ConsumeOptions};
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Job {
+    id: u64,
+    payload: String,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let queue = BroccoliQueue::builder()
+        .redis_url("redis://localhost:6379")
+        .build()
+        .await?;
+
+    // Consume with auto-acknowledgment
+    let options = ConsumeOptions::builder()
+        .auto_ack(true)
+        .build();
+
+    loop {
+        match queue.try_consume::<Job>("jobs", Some(options.clone())).await? {
+            Some(message) => {
+                println!("Processing job: {:?}", message.payload);
+                // Processing happens here
+                // Auto-ack means we don't need to explicitly acknowledge
+            }
+            None => {
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        }
+    }
+}
+```

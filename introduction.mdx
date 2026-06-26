@@ -1,0 +1,63 @@
+---
+title: "Broccoli Queue: Robust Async Jobs for Rust"
+sidebarTitle: "Introduction"
+description: "Broccoli Queue is a type-safe, async message queue library for Rust with Redis, RabbitMQ, and SurrealDB support — the Rust alternative to Celery."
+---
+
+Broccoli Queue is a modern, type-safe, asynchronous message queue library for Rust applications. Built as a Rust alternative to Celery, Broccoli Queue provides a robust foundation for distributing work across multiple workers with support for multiple broker backends including Redis, RabbitMQ, and SurrealDB.
+
+<CardGroup cols={2}>
+  <Card title="Multi-Broker Support">
+    Choose from Redis (default), RabbitMQ, or SurrealDB as your message broker backend, with Kafka support planned.
+  </Card>
+  
+  <Card title="Async & Type-Safe">
+    Built on Tokio for excellent async performance with compile-time guarantees through Rust's type system.
+  </Card>
+  
+  <Card title="Flexible Processing">
+    Process messages concurrently with customizable retry strategies, acknowledgment options, and error handling.
+  </Card>
+  
+  <Card title="Advanced Features">
+    Message scheduling, priority levels, TTL, batching, and fairness queues for fine-grained control.
+  </Card>
+</CardGroup>
+
+## Architecture Overview
+
+Broccoli Queue follows a clean architectural pattern:
+
+1. **Queue Interface**: The main `BroccoliQueue` struct serves as your primary interface for interacting with the messaging system
+2. **Broker Layer**: Abstracts different message broker backends (Redis, RabbitMQ, SurrealDB)
+3. **Message Flow**: Messages are published to topics, stored in the broker, then consumed and processed by workers
+   
+When you publish a message, it flows through this pipeline:
+- Your application creates a typed message payload
+- The queue serializes and sends it to the configured broker
+- Workers consume messages from the broker
+- Your handler functions process the deserialized payloads
+- Messages are acknowledged or rejected based on processing outcome
+
+## Why Broccoli Over Celery?
+
+Developers familiar with Celery will find Broccoli Queue refreshingly similar in concept but enhanced in execution:
+
+- **Performance**: Rust's zero-cost abstractions and Tokio's async runtime deliver exceptional throughput
+- **Type Safety**: Catch serialization and processing errors at compile time rather than runtime
+- **Memory Efficiency**: Rust's ownership model prevents memory leaks common in long-running queue workers
+- **Modern API**: Clean, builder-pattern-based configuration with comprehensive feature flags
+
+## Roadmap
+
+Broccoli Queue continues to evolve with exciting features planned:
+
+- [x] Redis broker implementation (current default)
+- [x] RabbitMQ broker support 
+- [ ] Kafka broker support
+- [ ] Proc macros for simplified worker declaration
+- [ ] Additional message patterns
+- [ ] Enhanced monitoring and metrics
+- [ ] Web interface for job monitoring and management
+
+<Link to="/quickstart">Get started with the quickstart guide →</Link>

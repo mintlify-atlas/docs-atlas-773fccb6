@@ -1,0 +1,164 @@
+---
+title: "SurrealDB Broker for Broccoli Queue"
+sidebarTitle: "SurrealDB"
+description: "Use SurrealDB as a message broker backend for Broccoli Queue, including in-memory mode for testing. Provide an existing connection with BroccoliQueue::builder_with."
+---
+
+Broccoli Queue supports SurrealDB as a message broker backend, offering a unique approach to message queuing with full ACID compliance. SurrealDB enables both remote database connections and in-memory mode for testing, making it versatile for different environments.
+
+## Feature Flag Setup
+
+To use SurrealDB, you need to enable the `surrealdb` feature flag:
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.4", default-features = false, features = ["surrealdb"] }
+
+# To use SurrealDB with management APIs
+# broccoli_queue = { version = "0.4", default-features = false, features = ["surrealdb"] }
+```
+
+## Connection Modes
+
+SurrealDB offers two distinct connection modes:
+
+### Remote Connection
+
+Connect to a remote SurrealDB instance:
+
+```rust
+use broccoli_queue::prelude::*;
+
+let broker_url = "ws://localhost:8000/rpc?ns=my_namespace&db=my_database&username=user&password=pass";
+
+let queue = BroccoliQueue::builder()
+    .broker_url(broker_url)
+    .build()
+    .await?;
+```
+
+### In-Memory Mode
+
+For testing and development, use in-memory mode which requires no external dependencies:
+
+```rust
+let broker_url = "mem://";
+
+let queue = BroccoliQueue::builder()
+    .broker_url(broker_url)
+    .build()
+    .await?;
+```
+
+## Reusing Existing Connections
+
+When you already have a SurrealDB connection, you can reuse it with the `builder_with` constructor:
+
+```rust
+use broccoli_queue::prelude::*;
+use surrealdb::{Surreal, engine::remote::ws::Ws};
+
+// Create and configure your SurrealDB connection
+let db = Surreal::new::<Ws>("localhost:8000".into()).await?;
+db.signin(surrealdb::opt::auth::Root {
+    username: "root",
+    password: "root",
+}).await?;
+db.use_ns("test").use_db("test").await?;
+
+// Use the existing connection with Broccoli Queue
+let queue = BroccoliQueue::builder_with(db)
+    .build()
+    .await?;
+```
+
+## Supported Features
+
+<Note>
+
+- **Priority Queuing**: ✓ Messages can be assigned priorities 1-5
+- **Message Scheduling**: ✓ Schedule messages for future delivery
+- **Fairness/Disambiguators**: ✓ Support for fair message distribution
+- **Management APIs**: ✗ Not supported
+- **Queue Size Metrics**: ✗ Not implemented
+
+</Note>
+
+<Warning>
+
+Under high concurrency scenarios, SurrealDB may exhibit non-idempotent behavior that could result in `BrokerNonIdempotentOp` or `BrokerNonIdempotentRetriableOp` errors. Ensure your application handles these cases appropriately.
+
+</Warning>
+
+<Tip>
+
+Use the `mem://` connection URL for integration tests to avoid external dependencies and speed up test execution.
+
+</Tip>
+
+## Example Usage with URL Connection
+
+```rust
+use broccoli_queue::prelude::*;
+use tokio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize queue with SurrealDB in-memory mode for testing
+    let queue = BroccoliQueue::builder()
+        .broker_url("mem://") // In-memory mode for testing
+        .retry_attempts(3)
+        .build()
+        .await?;
+
+    // Publish a message with scheduling
+    let message_id = queue.publish(
+        "tasks",
+        "process_data",
+        Some(PublishOptions {
+            priority: Some(4),
+            ..Default::default()
+        })
+    ).await?;
+
+    println!("Published message with ID: {}", message_id);
+
+    // Consume a message
+    let message = queue.consume("tasks", None).await?;
+    println!("Consumed message: {:?}", message.payload);
+    
+    // Process the message...
+    
+    // Acknowledge completion
+    queue.acknowledge("tasks", message).await?;
+
+    Ok(())
+}
+```
+
+## Example Usage with Existing Connection
+
+```rust
+use broccoli_queue::prelude::*;
+use surrealdb::{Surreal, engine::local::Db};
+use tokio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Create a new in-memory SurrealDB instance
+    let db = Surreal::new::<Db>(surrealdb::opt::Config::default()).await?;
+    db.use_ns("test").use_db("test").await?;
+
+    // Initialize queue with existing SurrealDB connection
+    let queue = BroccoliQueue::builder_with(db)
+        .build()
+        .await?;
+
+    // Publish and consume messages as usual
+    let message_id = queue.publish("tasks", "test_payload", None).await?;
+    let message = queue.consume("tasks", None).await?;
+    queue.acknowledge("tasks", message).await?;
+
+    Ok(())
+}
+```

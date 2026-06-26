@@ -1,0 +1,76 @@
+---
+title: "BrokerMessage — Typed Message Wrapper Reference"
+sidebarTitle: "BrokerMessage"
+description: "BrokerMessage<T> is the typed wrapper for all messages in Broccoli Queue. Contains task_id, payload, attempts counter, and an optional disambiguator field."
+---
+
+`BrokerMessage<T>` is the core message wrapper used throughout Broccoli Queue. It contains essential metadata required for proper message handling, including unique identification, retry tracking, and optional fairness controls. This structure is generic over the payload type `T`, allowing you to send strongly-typed messages through your queues.
+
+```rust
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct BrokerMessage<T: Clone> {
+    pub task_id: uuid::Uuid,
+    pub payload: T,
+    pub attempts: u8,
+    pub disambiguator: Option<String>,
+    // metadata field is pub(crate), not public
+}
+```
+
+<ResponseField name="task_id" type="uuid::Uuid">
+A UUID v4 that uniquely identifies the message. This value is automatically generated when creating a new BrokerMessage using `BrokerMessage::new()` and remains consistent across retries.
+</ResponseField>
+
+<ResponseField name="payload" type="T">
+The actual content of your message. This is generic over type `T` which must implement `Clone` and serialization traits. The payload can be any serializable Rust type.
+</ResponseField>
+
+<ResponseField name="attempts" type="u8">
+A counter that tracks how many times this message has been attempted for processing. Starts at 0 and increments each time `reject()` is called on the message.
+</ResponseField>
+
+<ResponseField name="disambiguator" type="Option&lt;String&gt;">
+An optional field used for message fairness. When set, it helps distribute workload evenly among different message categories in fairness-enabled queues.
+</ResponseField>
+
+To create a new BrokerMessage, use the constructor:
+
+```rust
+impl<T: Clone + serde::Serialize> BrokerMessage<T> {
+    pub fn new(payload: T, disambiguator: Option<String>) -> Self
+}
+```
+
+The constructor automatically generates a new UUID v4 for the `task_id` and initializes the `attempts` counter to 0.
+
+## Type Constraints
+
+For most operations, the payload type `T` must implement several traits:
+
+- `Clone` - to enable message duplication
+- `serde::Serialize` - for message serialization
+- `serde::de::DeserializeOwned` - for message deserialization
+
+These constraints ensure messages can be properly serialized for transport and cloned when needed.
+
+## Serialization
+
+BrokerMessage implements both `serde::Serialize` and `serde::Deserialize`, making it compatible with any serde-compatible format. Internally, Broccoli uses `serde_json` for message serialization.
+
+## Internal Fields
+
+The `metadata` field is marked as `pub(crate)`, meaning it's only accessible within the crate. This field stores additional internal data that users typically don't need to interact with.
+
+## Example Usage
+
+Here's how you might access fields of a consumed message:
+
+```rust
+let message: BrokerMessage<MyPayload> = consume_result?;
+println!("Processing task: {}", message.task_id);
+println!("Attempt #{}", message.attempts);
+if let Some(disambiguator) = &message.disambiguator {
+    println!("Disambiguator: {}", disambiguator);
+}
+// Process message.payload...
+```

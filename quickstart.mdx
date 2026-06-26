@@ -1,47 +1,201 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Broccoli Queue"
+sidebarTitle: "Quickstart"
+description: "Set up Broccoli Queue with Redis in under five minutes. Publish your first message and process it with a concurrent worker handler."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+In this guide, you'll set up Broccoli Queue with Redis and run a complete publish-consume cycle in under 5 minutes. By the end, you'll have published messages to a queue and processed them with concurrent workers.
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
 
-    ```bash
-    npm install your-package
-    ```
-  </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+### Prerequisites
 
-    ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+Before starting, ensure you have:
 
-    ```bash
-    your-cli start
-    ```
-  </Step>
+- Rust and Cargo installed (edition 2021 or later)
+- A running Redis instance (or start one with `redis-server`)
+- Basic familiarity with async Rust and Tokio
+
+### Add Broccoli Queue to Your Project
+
+Add Broccoli Queue to your `Cargo.toml` dependencies:
+
+```toml
+[dependencies]
+broccoli_queue = "0.4.6"
+serde = { version = "1.0", features = ["derive"] }
+tokio = { version = "1.0", features = ["full"] }
+```
+
+### Define Your Job Payload
+
+Create a serializable struct for your job data:
+
+```rust
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobPayload {
+    id: String,
+    task_name: String,
+    parameters: Parameters,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Parameters {
+    input_data: String,
+    priority: u8,
+    timeout_seconds: u32,
+}
+```
+
+### Create and Configure the Queue
+
+Initialize Broccoli Queue with connection pooling and retry strategies:
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .pool_connections(5)
+    .failed_message_retry_strategy(Default::default())
+    .build()
+    .await?;
+```
+
+### Publish Messages to the Queue
+
+Send your job payload to a topic:
+
+```rust
+let job = JobPayload {
+    id: "job-1".to_string(),
+    task_name: "process_data".to_string(),
+    parameters: Parameters {
+        input_data: "data-1".to_string(),
+        priority: 1,
+        timeout_seconds: 300,
+    },
+    created_at: chrono::Utc::now(),
+};
+
+queue.publish("jobs", None, &job, None).await?;
+```
+
+### Consume Messages Concurrently
+
+Process messages with a concurrent worker pool:
+
+```rust
+queue.process_messages(
+    "jobs", 
+    Some(4),  // 4 concurrent workers
+    None,     // default consume options
+    |msg| async move {
+        println!("Processing job: {:?}", msg);
+        // Your business logic here
+        Ok(())
+    }
+).await?;
+```
+
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Complete Publisher Example
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+```rust
+use broccoli_queue::{
+    error::BroccoliError,
+    queue::BroccoliQueue,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobPayload {
+    id: String,
+    task_name: String,
+    parameters: Parameters,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Parameters {
+    input_data: String,
+    priority: u8,
+    timeout_seconds: u32,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), BroccoliError> {
+    let queue = BroccoliQueue::builder("redis://localhost:6379")
+        .failed_message_retry_strategy(Default::default())
+        .pool_connections(5)
+        .build()
+        .await?;
+
+    let job = JobPayload {
+        id: "job-1".to_string(),
+        task_name: "process_data".to_string(),
+        parameters: Parameters {
+            input_data: "data-1".to_string(),
+            priority: 1,
+            timeout_seconds: 300,
+        },
+        created_at: chrono::Utc::now(),
+    };
+
+    queue.publish("jobs", None, &job, None).await?;
+    
+    println!("Published job: {}", job.id);
+    Ok(())
+}
+```
+
+## Complete Consumer Example
+
+```rust
+use broccoli_queue::{error::BroccoliError, queue::BroccoliQueue};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct JobPayload {
+    id: String,
+    task_name: String,
+    parameters: Parameters,
+    created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct Parameters {
+    input_data: String,
+    priority: u8,
+    timeout_seconds: u32,
+}
+
+#[tokio::main]
+async fn main() -> Result<(), BroccoliError> {
+    let queue = BroccoliQueue::builder("redis://localhost:6379")
+        .pool_connections(5)
+        .failed_message_retry_strategy(Default::default())
+        .build()
+        .await?;
+
+    queue
+        .process_messages("jobs", Some(4), None, |msg| async move {
+            println!("Processing job: {} ({})", msg.payload.id, msg.payload.task_name);
+            // Simulate work
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+            Ok(())
+        })
+        .await?;
+
+    Ok(())
+}
+```
+
+<Note>
+Broccoli Queue uses feature flags to enable different broker backends. The Redis backend is enabled by default. To use RabbitMQ or SurrealDB, see the installation guide for feature flag configuration.
+</Note>
+
+<Link to="/installation">Learn about all installation options →</Link>

@@ -1,0 +1,116 @@
+---
+title: "Redis Broker for Broccoli Queue"
+sidebarTitle: "Redis"
+description: "Configure Broccoli Queue with the Redis broker backend. Supports connection pooling, priority queuing, message scheduling, fairness, and the management API."
+---
+
+The Redis broker is the default backend for Broccoli Queue. It provides robust messaging capabilities with support for priority queuing, message scheduling, fairness mechanisms, and a management API. Redis is an excellent choice for production deployments requiring high performance and reliability.
+
+## Feature Flag Setup
+
+Redis is enabled by default. To explicitly enable it or customize features, update your `Cargo.toml`:
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.4", features = ["redis"] }
+
+# To disable default features and only enable Redis
+# broccoli_queue = { version = "0.4", default-features = false, features = ["redis"] }
+```
+
+## Connection Configuration
+
+Connect to Redis using standard URL formats:
+
+```rust
+use broccoli_queue::prelude::*;
+
+let broker_url = "redis://localhost:6379";
+// With authentication: "redis://username:password@localhost:6379"
+// With TLS: "rediss://username:password@localhost:6380"
+
+let queue = BroccoliQueue::builder()
+    .broker_url(broker_url)
+    .build()
+    .await?;
+```
+
+## Connection Pooling
+
+The Redis broker uses `bb8-redis` for connection pooling with a default pool size of 10 connections:
+
+```rust
+let queue = BroccoliQueue::builder()
+    .broker_url("redis://localhost:6379")
+    .pool_connections(20) // Customize pool size
+    .build()
+    .await?;
+```
+
+## Data Structures
+
+The Redis broker uses these data structures internally:
+- **Sorted Sets (ZSET)**: Main queues with scores based on timestamps and priorities
+- **Hashes**: Store message metadata and payloads
+- **Lists**: Processing queues for in-flight messages
+- **Sets**: Track fairness/disambiguator mechanisms
+
+## Supported Features
+
+<Note>
+
+- **Priority Queuing**: ✓ Messages can be assigned priorities 1-5
+- **Message Scheduling**: ✓ Delay or schedule messages for future delivery
+- **Fairness/Disambiguators**: ✓ Round-robin consumption across different producers
+- **Management APIs**: ✓ Full access to queue inspection and administration
+- **Queue Size Metrics**: ✓ Accurate count of pending messages
+
+</Note>
+
+## Example Usage
+
+```rust
+use broccoli_queue::prelude::*;
+use tokio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize queue with Redis broker
+    let queue = BroccoliQueue::builder()
+        .broker_url("redis://localhost:6379")
+        .pool_connections(15)
+        .enable_scheduling(true) // Enable message scheduling
+        .retry_attempts(5)       // Configure retries
+        .build()
+        .await?;
+
+    // Publish a message with priority
+    let message_id = queue.publish(
+        "tasks",
+        "process_data",
+        Some(PublishOptions {
+            priority: Some(3),
+            ..Default::default()
+        })
+    ).await?;
+
+    println!("Published message with ID: {}", message_id);
+
+    // Consume a message
+    let message = queue.consume("tasks", None).await?;
+    println!("Consumed message: {:?}", message.payload);
+    
+    // Process the message...
+    
+    // Acknowledge completion
+    queue.acknowledge("tasks", message).await?;
+
+    Ok(())
+}
+```
+
+<Tip>
+
+For production deployments, ensure Redis persistence is properly configured using either RDB snapshots or AOF (Append-Only File) logging to prevent message loss during restarts.
+
+</Tip>

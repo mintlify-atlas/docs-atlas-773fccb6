@@ -1,0 +1,78 @@
+---
+title: "Installing Broccoli Queue in Your Rust Project"
+sidebarTitle: "Installation"
+description: "Add broccoli_queue to your Cargo.toml. Configure feature flags for Redis, RabbitMQ, or SurrealDB broker backends."
+---
+
+Broccoli Queue integrates seamlessly into your Rust project through Cargo. With support for multiple broker backends, you can choose the messaging system that best fits your architecture.
+
+## Adding to Your Project
+
+Add Broccoli Queue to your `Cargo.toml` file:
+
+```toml
+[dependencies]
+broccoli_queue = "0.4.6"
+```
+
+This will include the default Redis backend with all necessary dependencies.
+
+## Feature Flags
+
+Broccoli Queue uses feature flags to enable different broker backends and capabilities:
+
+| Feature      | Backend           | Cargo.toml Snippet                                   |
+|--------------|-------------------|------------------------------------------------------|
+| `redis`      | Redis (default)   | `broccoli_queue = "0.4.6"`                          |
+| `rabbitmq`   | RabbitMQ          | `broccoli_queue = { version = "0.4.6", features = ["rabbitmq"] }` |
+| `surrealdb`  | SurrealDB         | `broccoli_queue = { version = "0.4.6", features = ["surrealdb"] }` |
+| `management` | Management APIs   | `broccoli_queue = { version = "0.4.6", features = ["management"] }` |
+
+## Switching Broker Backends
+
+To use a different broker backend, disable the default features and enable your preferred one:
+
+<Tabs>
+  <Tab title="RabbitMQ">
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.4.6", default-features = false, features = ["rabbitmq"] }
+```
+
+  </Tab>
+  
+  <Tab title="SurrealDB">
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.4.6", default-features = false, features = ["surrealdb"] }
+```
+
+  </Tab>
+  
+  <Tab title="Redis (Default)">
+
+```toml
+[dependencies]
+broccoli_queue = "0.4.6"
+# Or explicitly:
+# broccoli_queue = { version = "0.4.6", default-features = true }
+```
+
+  </Tab>
+</Tabs>
+
+## Additional Features
+
+- **Management API**: Enable the `management` feature to access queue status and metrics APIs
+- **Test Fairness**: The `test-fairness` feature is intended for internal testing only
+
+## Requirements
+
+Broccoli Queue requires:
+- Rust edition 2021 or later
+- Tokio with full features for async runtime support
+- A compatible message broker (Redis v5+, RabbitMQ 3.8+, or SurrealDB 1.0+)
+
+<Link to="/quickstart">Continue to the quickstart guide →</Link>

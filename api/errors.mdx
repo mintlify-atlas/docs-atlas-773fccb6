@@ -1,0 +1,155 @@
+---
+title: "BroccoliError — Error Types Reference"
+sidebarTitle: "BroccoliError"
+description: "BroccoliError is the unified error enum for Broccoli Queue. Every variant includes the operation that failed. Implements std::error::Error via thiserror."
+---
+
+BroccoliError is the unified error type used throughout the Broccoli Queue system. It encompasses all possible errors that can occur during broker operations, message handling, and serialization. Each variant provides context about what operation failed, making it easier to implement appropriate error handling logic. The enum implements `std::error::Error` through the `thiserror` crate, providing automatic `Display` implementations and source error chaining.
+
+```rust
+#[derive(Debug, thiserror::Error)]
+pub enum BroccoliError {
+    #[error("Broker error: {0}")]
+    Broker(String),
+    #[error("Broker error: non-idempotent operation {0}")]
+    BrokerNonIdempotentOp(String),
+    #[error("Broker error: non-idempotent retriable operation {0}")]
+    BrokerNonIdempotentRetriableOp(String),
+    #[error("Failed to publish message: {0}")]
+    Publish(String),
+    #[error("Failed to consume message: {0}")]
+    Consume(String),
+    #[error("Failed to acknowledge message: {0}")]
+    Acknowledge(String),
+    #[error("Failed to reject message: {0}")]
+    Reject(String),
+    #[error("Failed to cancel message: {0}")]
+    Cancel(String),
+    #[error("Failed to get message position: {0}")]
+    GetMessagePosition(String),
+    #[error("Serialization error: {0}")]
+    Serialization(#[from] serde_json::Error),
+    #[cfg(feature = "redis")]
+    #[error("Redis error: {0}")]
+    Redis(#[from] redis::RedisError),
+    #[cfg(feature = "surrealdb")]
+    #[error("SurrealDB error: {0}")]
+    SurrealDB(#[from] surrealdb::Error),
+    #[error("Job error: {0}")]
+    Job(String),
+    #[error("Queue status error: {0}")]
+    QueueStatus(String),
+    #[error("Connection timeout after {0} retries")]
+    ConnectionTimeout(u32),
+    #[error("Feature not implemented")]
+    NotImplemented,
+}
+```
+
+## Error Variants
+
+| Variant | When It Occurs | Notes |
+|---------|----------------|-------|
+| `Broker(String)` | Connection failures, pool initialization errors | General broker-related issues |
+| `BrokerNonIdempotentOp(String)` | Concurrent reads on same topic (SurrealDB) | Not retriable |
+| `BrokerNonIdempotentRetriableOp(String)` | Concurrent writes on same table (SurrealDB) | Retriable |
+| `Publish(String)` | Failed send, serialization | Message publishing issues |
+| `Consume(String)` | Failed retrieve, deserialization | Message consumption problems |
+| `Acknowledge(String)` | Failed ack | Message acknowledgment failures |
+| `Reject(String)` | Failed reject | Message rejection problems |
+| `Cancel(String)` | Failed cancel | Message cancellation failures |
+| `GetMessagePosition(String)` | Failed position lookup | Only available for some brokers |
+| `Serialization(serde_json::Error)` | JSON serialization/deserialization errors | Auto-converted from serde_json::Error |
+| `Redis(redis::RedisError)` | Redis-specific errors | Only with `redis` feature |
+| `SurrealDB(surrealdb::Error)` | SurrealDB-specific errors | Only with `surrealdb` feature |
+| `Job(String)` | Job processing errors | Application-level job errors |
+| `QueueStatus(String)` | Queue status retrieval errors | Issues with monitoring queue state |
+| `ConnectionTimeout(u32)` | Connection retry attempts exhausted | u32 indicates retry count |
+| `NotImplemented` | Feature unsupported by broker | E.g., `cancel` on RabbitMQ |
+
+## Special Variants Explained
+
+<Expandable title="BrokerNonIdempotentOp and BrokerNonIdempotentRetriableOp">
+These two variants relate to concurrency issues specific to SurrealDB. `BrokerNonIdempotentOp` occurs during concurrent reads on the same topic and is not retriable. `BrokerNonIdempotentRetriableOp` occurs during concurrent writes on the same table and can be safely retried.
+</Expandable>
+
+<Expandable title="ConnectionTimeout(u32)">
+This error variant carries the number of retry attempts that were made before the connection timed out. The `u32` value gives insight into how persistent the connection issue was.
+</Expandable>
+
+<Expandable title="NotImplemented">
+Some operations like `cancel` are not supported by all brokers. This variant is returned when trying to perform such operations on an incompatible backend.
+</Expandable>
+
+## Feature-Gated Errors
+
+Certain error variants are only available when their respective features are enabled:
+
+- `Redis(#[from] redis::RedisError)` - Available with the `redis` feature
+- `SurrealDB(#[from] surrealdb::Error)` - Available with the `surrealdb` feature
+
+## Error Handling Example
+
+```rust
+match broccoli_queue.consume("my_queue").await {
+    Ok(message) => {
+        // Process message
+    }
+    Err(BroccoliError::Consume(e)) => {
+        eprintln!("Failed to consume message: {}", e);
+    }
+    Err(BroccoliError::Serialization(e)) => {
+        eprintln!("Failed to deserialize message: {}", e);
+    }
+    Err(BroccoliError::ConnectionTimeout(retries)) => {
+        eprintln!("Connection timed out after {} retries", retries);
+    }
+    Err(e) => {
+        eprintln!("Unexpected error: {:?}", e);
+    }
+}
+```
+
+<Tip>
+All BroccoliError variants implement both `Display` and `std::error::Error` thanks to the `thiserror` derive macro. This makes them compatible with standard Rust error handling patterns and libraries like `anyhow` or `eyre`.
+</Tip>
+
+## Management Types
+
+The management module also defines types used for queue monitoring:
+
+### QueueStatus
+
+Represents the current state of a queue including metrics about message distribution.
+
+```rust
+#[derive(Debug, Clone)]
+pub struct QueueStatus {
+    pub name: String,
+    pub queue_type: QueueType,
+    pub size: usize,
+    pub processing: usize,
+    pub failed: usize,
+    pub disambiguator_count: Option<usize>,
+}
+```
+
+### QueueType
+
+Indicates the functional type of a queue in the system.
+
+```rust
+#[derive(Debug, Clone, PartialEq, Eq, Display)]
+pub enum QueueType {
+    #[display("failed")]
+    Failed,
+    #[display("processing")]
+    Processing,
+    #[display("main")]
+    Main,
+    #[display("fairness")]
+    Fairness,
+}
+```
+
+These types are primarily used with queue management functionality that allows introspection of queue states.

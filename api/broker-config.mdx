@@ -1,0 +1,70 @@
+---
+title: "BrokerConfig — Broker Configuration Reference"
+sidebarTitle: "BrokerConfig"
+description: "BrokerConfig controls connection pooling, retry behavior, and scheduling for Broccoli Queue broker backends. Typically configured via BroccoliQueueBuilder."
+---
+
+BrokerConfig allows you to fine-tune the behavior of your message broker connections. While most users will interact with these settings through the fluent `BroccoliQueueBuilder` interface, understanding the underlying configuration structure can be helpful for advanced use cases or direct instantiation.
+
+```rust
+#[derive(Debug, Clone)]
+pub struct BrokerConfig {
+    pub retry_attempts: Option<u8>,
+    pub retry_failed: Option<bool>,
+    pub pool_connections: Option<u8>,
+    pub enable_scheduling: Option<bool>,
+    #[cfg(feature = "surrealdb")]
+    pub surrealdb_connection: Option<surrealdb::Surreal<surrealdb::engine::any::Any>>,
+}
+```
+
+<ResponseField name="retry_attempts" type="Option&lt;u8&gt;" defaultValue="Some(3)">
+Controls the maximum number of retry attempts for failed messages before they're moved to a failed queue. Setting this to `None` disables retry counting entirely.
+</ResponseField>
+
+<ResponseField name="retry_failed" type="Option&lt;bool&gt;" defaultValue="Some(true)">
+Determines whether failed messages should be retried at all. When set to `false`, failed messages are immediately moved to the failed queue without retry attempts.
+</ResponseField>
+
+<ResponseField name="pool_connections" type="Option&lt;u8&gt;" defaultValue="Some(10)">
+Specifies the number of connections to maintain in the connection pool for brokers that support pooling. Connection pooling can significantly improve performance for high-throughput applications.
+</ResponseField>
+
+<ResponseField name="enable_scheduling" type="Option&lt;bool&gt;" defaultValue="Some(false)">
+Enables message scheduling capabilities for brokers that support it. Note that for RabbitMQ, this requires the delayed-exchange plugin to be installed.
+</ResponseField>
+
+<Note>
+In most cases, you should configure these options using the `BroccoliQueueBuilder` rather than instantiating `BrokerConfig` directly. The builder provides a more ergonomic API and handles validation automatically.
+</Note>
+
+## Default Implementation
+
+When using `BrokerConfig::default()`, the following values are set:
+
+- `retry_attempts`: `Some(3)`
+- `retry_failed`: `Some(true)`
+- `pool_connections`: `Some(10)`
+- `enable_scheduling`: `Some(false)`
+
+## Broker Types
+
+Broccoli Queue supports multiple broker backends through feature flags:
+
+```rust
+pub enum BrokerType {
+    #[cfg(feature = "redis")]    Redis,
+    #[cfg(feature = "rabbitmq")] RabbitMQ,
+    #[cfg(feature = "surrealdb")] SurrealDB,
+}
+```
+
+The availability of each broker type depends on which features are enabled in your project's `Cargo.toml`:
+
+| Broker | Feature Flag | URL Scheme |
+|--------|-------------|------------|
+| Redis | `redis` | `redis://` or `rediss://` |
+| RabbitMQ | `rabbitmq` | `amqp://` or `amqps://` |
+| SurrealDB | `surrealdb` | Any supported SurrealDB scheme |
+
+For SurrealDB specifically, you can optionally provide an existing database connection via the `surrealdb_connection` field rather than having Broccoli Queue establish its own connection.

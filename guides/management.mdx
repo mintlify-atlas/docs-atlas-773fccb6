@@ -1,0 +1,149 @@
+---
+title: "Queue Management and Status Monitoring"
+sidebarTitle: "Management"
+description: "Inspect queue health with Broccoli Queue's management feature. Retrieve queue size, processing count, failure counts, and disambiguator counts via queue_status."
+---
+
+Monitoring the health and status of your queues is essential for maintaining reliable message processing systems. Broccoli Queue's management features allow you to inspect queue states, track processing metrics, and monitor for potential issues.
+
+To use management features, enable them by adding the `management` feature to your Cargo.toml:
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.1", features = ["management"] }
+```
+
+## Queue Status Information
+
+Retrieve detailed status information about any queue using the `queue_status` method:
+
+```rust
+use broccoli_queue::BroccoliQueue;
+
+// Get status for the main queue
+let status = queue.queue_status("jobs".to_string(), None).await?;
+println!("Queue name: {}", status.name);
+println!("Queue type: {:?}", status.queue_type);
+println!("Size: {}", status.size);
+println!("Processing: {}", status.processing);
+println!("Failed: {}", status.failed);
+```
+
+The returned `QueueStatus` struct contains these fields:
+- `name`: The queue identifier
+- `queue_type`: Whether it's Main, Processing, Failed, or Fairness
+- `size`: Number of messages waiting to be processed
+- `processing`: Number of messages currently being processed
+- `failed`: Number of messages that have failed processing
+- `disambiguator_count`: For fairness queues, the number of disambiguator sub-queues
+
+## Queue Types
+
+Different queue types provide insights into various stages of message processing:
+
+<Tabs>
+<Tab title="Main Queue">
+
+```rust
+use broccoli_queue::{BroccoliQueue, QueueType};
+
+let status = queue.queue_status("jobs".to_string(), None).await?;
+assert_eq!(status.queue_type, QueueType::Main);
+
+println!("Main queue '{}' has {} messages waiting", 
+         status.name, status.size);
+```
+</Tab>
+<Tab title="Processing Queue">
+
+```rust
+// Processing queues track in-flight messages
+let status = queue.queue_status("jobs".to_string(), Some("_processing".to_string())).await?;
+assert_eq!(status.queue_type, QueueType::Processing);
+
+println!("{} messages currently being processed", status.processing);
+```
+</Tab>
+<Tab title="Failed Queue">
+
+```rust
+// Failed queues store messages that exceeded retry limits
+let status = queue.queue_status("jobs".to_string(), Some("_failed".to_string())).await?;
+assert_eq!(status.queue_type, QueueType::Failed);
+
+if status.failed > 0 {
+    println!("Warning: {} messages have failed processing", status.failed);
+}
+```
+</Tab>
+<Tab title="Fairness Queue">
+
+```rust
+// Fairness queues have per-disambiguator status
+let status = queue.queue_status("jobs".to_string(), Some("_tenant-a_queue".to_string())).await?;
+assert_eq!(status.queue_type, QueueType::Fairness);
+
+println!("Tenant-A queue has {} messages", status.size);
+```
+</Tab>
+</Tabs>
+
+## Monitoring Example
+
+Set up a monitoring loop to track queue health:
+
+```rust
+use broccoli_queue::BroccoliQueue;
+use tokio::time::{sleep, Duration};
+
+async fn monitor_queues(queue: &BroccoliQueue) -> Result<(), BroccoliError> {
+    loop {
+        // Check main queue status
+        let main_status = queue.queue_status("jobs".to_string(), None).await?;
+        
+        // Check processing queue
+        let processing_status = queue.queue_status(
+            "jobs".to_string(), 
+            Some("_processing".to_string())
+        ).await?;
+        
+        // Check failed queue
+        let failed_status = queue.queue_status(
+            "jobs".to_string(), 
+            Some("_failed".to_string())
+        ).await?;
+        
+        println!(
+            "Queue Report - Waiting: {}, Processing: {}, Failed: {}",
+            main_status.size,
+            processing_status.processing,
+            failed_status.failed
+        );
+        
+        // Alert if failed messages exceed threshold
+        if failed_status.failed > 100 {
+            eprintln!("ALERT: High number of failed messages!");
+        }
+        
+        sleep(Duration::from_secs(30)).await;
+    }
+}
+```
+
+## Quick Size Checks
+
+For simpler monitoring needs, use the `size` method which doesn't require the management feature:
+
+```rust
+// Simple size check (no feature flag required)
+let queue_size = queue.size("jobs")?;
+println!("Jobs queue has {} messages", queue_size);
+
+// For fairness queues, returns sizes for all disambiguators
+let fairness_sizes: HashMap<String, u64> = queue.size("jobs")?;
+println!("Per-tenant queue sizes: {:?}", fairness_sizes);
+```
+
+<Note>
+The management feature is compatible with Redis and RabbitMQ brokers but is not currently supported with SurrealDB.
+</Note>

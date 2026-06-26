@@ -1,0 +1,540 @@
+---
+title: "BroccoliQueue — Main Queue Interface Reference"
+sidebarTitle: "BroccoliQueue"
+description: "Complete API reference for BroccoliQueue and BroccoliQueueBuilder. Every method, parameter, return type, and error variant documented with usage examples."
+---
+
+BroccoliQueue is the primary interface for interacting with the message broker in the Broccoli Queue system. It provides methods for publishing and consuming messages, managing message lifecycle, and processing messages with custom handlers. This reference covers all available methods, their parameters, return types, and common usage patterns.
+
+## BroccoliQueueBuilder
+
+Before you can use BroccoliQueue, you need to construct it using the BroccoliQueueBuilder:
+
+```rust
+use broccoli_queue::BroccoliQueue;
+
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .failed_message_retry_strategy(Default::default())
+    .pool_connections(5)
+    .build()
+    .await?;
+```
+
+<ParamField name="broker_url" type="impl Into<String>">
+The URL of the broker to connect to (e.g., "redis://localhost:6379", "amqp://localhost:5672").
+</ParamField>
+
+### Builder Methods
+
+<ParamField name="failed_message_retry_strategy" type="const fn(RetryStrategy) -> Self">
+Sets the retry strategy for failed messages. See [RetryStrategy](./retry-strategy) for configuration options.
+</ParamField>
+
+<ParamField name="pool_connections" type="const fn(u8) -> Self">
+Sets the number of connections to maintain in the connection pool.
+</ParamField>
+
+<ParamField name="enable_scheduling" type="const fn(bool) -> Self">
+Enables or disables message scheduling. With RabbitMQ, you'll need to install the delayed-exchange plugin.
+</ParamField>
+
+<ParamField name="build" type="async fn() -> Result&lt;BroccoliQueue, BroccoliError&gt;">
+Builds the BroccoliQueue with the specified configuration.
+</ParamField>
+
+## Constructor Methods
+
+### builder
+
+Creates a new `BroccoliQueueBuilder` with the specified broker URL.
+
+```rust
+use broccoli_queue::BroccoliQueue;
+
+let builder = BroccoliQueue::builder("redis://localhost:6379");
+```
+
+<ParamField name="broker_url" type="impl Into<String>">
+The URL of the broker to connect to.
+</ParamField>
+
+### builder_with (surrealdb feature)
+
+Creates a new `BroccoliQueueBuilder` with a provided SurrealDB connection.
+
+```rust
+#[cfg(feature = "surrealdb")]
+use broccoli_queue::BroccoliQueue;
+use surrealdb::Surreal;
+use surrealdb::engine::any::Any;
+
+#[cfg(feature = "surrealdb")]
+let db = Surreal::init();
+let builder = BroccoliQueue::builder_with(db);
+```
+
+<ParamField name="db" type="Surreal<Any>">
+An existing SurrealDB connection to reuse.
+</ParamField>
+
+## Publishing Methods
+
+### publish
+
+Publishes a single message to the specified topic.
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, PublishOptions};
+
+let message = "Hello, World!";
+let result = queue.publish("my-topic", None, &message, None).await?;
+println!("Published message with ID: {}", result.task_id);
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to publish to.
+</ParamField>
+
+<ParamField name="disambiguator" type="Option<String>">
+Used for fairness queues to determine which sub-queue the message should go to. Optional.
+</ParamField>
+
+<ParamField name="message" type="&T">
+The message to be published, where T implements Clone + Serialize + DeserializeOwned.
+</ParamField>
+
+<ParamField name="options" type="Option<PublishOptions>">
+Optional publishing options (TTL, delay, priority, etc.). See [PublishOptions](./publish-options).
+</ParamField>
+
+<ResponseField name="Ok" type="BrokerMessage&lt;T&gt;">
+The published message with metadata.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the message fails to publish.
+</Note>
+
+### publish_batch
+
+Publishes a batch of messages to the specified topic.
+
+```rust
+use broccoli_queue::queue::{BroccoliQueue, PublishOptions};
+use time::Duration;
+
+let messages = vec!["Message 1", "Message 2", "Message 3"];
+let options = Some(PublishOptions::builder().ttl(Duration::hours(1)).build());
+let result = queue.publish_batch("my-topic", None, messages, options).await?;
+println!("Published {} messages", result.len());
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to publish to.
+</ParamField>
+
+<ParamField name="disambiguator" type="Option<String>">
+Used for fairness queues to determine which sub-queue the messages should go to. Optional.
+</ParamField>
+
+<ParamField name="messages" type="impl IntoIterator<Item = T>">
+An iterator over the messages to be published.
+</ParamField>
+
+<ParamField name="options" type="Option<PublishOptions>">
+Optional publishing options (TTL, delay, priority, etc.). See [PublishOptions](./publish-options).
+</ParamField>
+
+<ResponseField name="Ok" type="Vec&lt;BrokerMessage&lt;T&gt;&gt;">
+A vector of published messages with metadata.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the messages fail to publish.
+</Note>
+
+## Consuming Methods (Blocking)
+
+### consume
+
+Consumes a message from the specified topic. This method will block until a message is available.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+use broccoli_queue::brokers::broker::BrokerMessage;
+
+let message: BrokerMessage<String> = queue.consume("my-topic", None).await?;
+println!("Received message: {:?}", message.payload);
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to consume from.
+</ParamField>
+
+<ParamField name="options" type="Option<ConsumeOptions>">
+Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
+</ParamField>
+
+<ResponseField name="Ok" type="BrokerMessage&lt;T&gt;">
+The consumed message with metadata.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the message fails to consume.
+</Note>
+
+### consume_batch
+
+Consumes a batch of messages from the specified topic with a timeout. This method will block until either the specified number of messages are consumed or the timeout is reached.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+use time::Duration;
+
+let messages = queue.consume_batch::<String>("my-topic", 5, Duration::seconds(10), None).await?;
+println!("Consumed {} messages", messages.len());
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to consume from.
+</ParamField>
+
+<ParamField name="batch_size" type="usize">
+The number of messages to consume.
+</ParamField>
+
+<ParamField name="timeout" type="Duration">
+The timeout duration for consuming messages.
+</ParamField>
+
+<ParamField name="options" type="Option<ConsumeOptions>">
+Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
+</ParamField>
+
+<ResponseField name="Ok" type="Vec&lt;BrokerMessage&lt;T&gt;&gt;">
+A vector of consumed messages with metadata.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the messages fail to consume.
+</Note>
+
+## Consuming Methods (Non-blocking)
+
+### try_consume
+
+Attempts to consume a message from the specified topic. This method will not block, returning immediately if no message is available.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+if let Some(message) = queue.try_consume::<String>("my-topic", None).await? {
+    println!("Received message: {:?}", message.payload);
+} else {
+    println!("No message available");
+}
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to consume from.
+</ParamField>
+
+<ParamField name="options" type="Option<ConsumeOptions>">
+Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
+</ParamField>
+
+<ResponseField name="Ok" type="Option&lt;BrokerMessage&lt;T&gt;&gt;">
+An option containing the consumed message if available.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the message fails to consume.
+</Note>
+
+### try_consume_batch
+
+Attempts to consume up to a specified number of messages from the topic without blocking.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+let messages = queue.try_consume_batch::<String>("my-topic", 10, None).await?;
+println!("Consumed {} messages", messages.len());
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to consume from.
+</ParamField>
+
+<ParamField name="batch_size" type="usize">
+Maximum number of messages to try to consume.
+</ParamField>
+
+<ParamField name="options" type="Option<ConsumeOptions>">
+Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
+</ParamField>
+
+<ResponseField name="Ok" type="Vec&lt;BrokerMessage&lt;T&gt;&gt;">
+A vector of consumed messages (may be fewer than batch_size if fewer messages are available).
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the messages fail to consume.
+</Note>
+
+## Message Lifecycle Methods
+
+### acknowledge
+
+Acknowledges the processing of a message, removing it from the processing queue.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+let message = queue.consume::<String>("my-topic", None).await?;
+// Process message...
+queue.acknowledge("my-topic", message).await?;
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic where the message originated.
+</ParamField>
+
+<ParamField name="message" type="BrokerMessage&lt;T&gt;">
+The message to be acknowledged.
+</ParamField>
+
+<ResponseField status="Ok" type="()">
+Indicates successful acknowledgment.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the message fails to acknowledge.
+</Note>
+
+### reject
+
+Rejects the processing of a message, moving it to the failed queue.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+let message = queue.consume::<String>("my-topic", None).await?;
+// Handle error condition...
+queue.reject("my-topic", message).await?;
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic where the message originated.
+</ParamField>
+
+<ParamField name="message" type="BrokerMessage&lt;T&gt;">
+The message to be rejected.
+</ParamField>
+
+<ResponseField status="Ok" type="()">
+Indicates successful rejection.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the message fails to reject.
+</Note>
+
+### cancel
+
+Cancels the processing of a message, deleting it from the queue.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+queue.cancel("my-topic", "message-id".to_string()).await?;
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic where the message originated.
+</ParamField>
+
+<ParamField name="message_id" type="String">
+The ID of the message to cancel.
+</ParamField>
+
+<ResponseField status="Ok" type="()">
+Indicates successful cancellation.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the message fails to cancel.
+</Note>
+
+## Queue Information Methods
+
+### size
+
+Returns the size of the queue(s) for the given topic.
+
+For fairness queues, returns a map with each disambiguator queue and its size.
+For unfair queues, returns a map with just the main queue name and its size.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+
+let sizes = queue.size("my-topic").await?;
+for (queue_name, size) in sizes {
+    println!("Queue '{}' has {} messages", queue_name, size);
+}
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to get size information for.
+</ParamField>
+
+<ResponseField status="Ok" type="HashMap<String, u64>">
+A map of queue names to their sizes.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if the queue size fails to be retrieved.
+</Note>
+
+## Processing Loop Methods
+
+### process_messages
+
+Processes messages from the specified topic with the provided handler function in a continuous loop.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+use broccoli_queue::brokers::broker::BrokerMessage;
+
+queue.process_messages(
+    "my-topic",
+    Some(3), // 3 concurrent workers
+    None,
+    |message: BrokerMessage<String>| async move {
+        println!("Processing message: {:?}", message.payload);
+        Ok(())
+    }
+).await?;
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to process messages from.
+</ParamField>
+
+<ParamField name="concurrency" type="Option<usize>">
+Number of concurrent message handlers. If None, no concurrency is used.
+</ParamField>
+
+<ParamField name="consume_options" type="Option<ConsumeOptions>">
+Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
+</ParamField>
+
+<ParamField name="handler" type="Fn(BrokerMessage&lt;T&gt;) -> Fut">
+The handler function to process messages, where `Fut` is a Future returning `Result<(), BroccoliError>`.
+</ParamField>
+
+<ResponseField status="Ok" type="()">
+Indicates successful completion of the processing loop.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if message processing fails. This function runs indefinitely unless an error occurs.
+</Note>
+
+### process_messages_with_handlers
+
+Processes messages with separate handlers for success and error conditions.
+
+```rust
+use broccoli_queue::queue::BroccoliQueue;
+use broccoli_queue::brokers::broker::BrokerMessage;
+use broccoli_queue::error::BroccoliError;
+
+async fn process_message(message: BrokerMessage<String>) -> Result<(), BroccoliError> {
+    println!("Processing message: {:?}", message.payload);
+    Ok(())
+}
+
+async fn on_success(message: BrokerMessage<String>, _result: ()) -> Result<(), BroccoliError> {
+    println!("Successfully processed message: {}", message.task_id);
+    Ok(())
+}
+
+async fn on_error(message: BrokerMessage<String>, error: BroccoliError) -> Result<(), BroccoliError> {
+    println!("Failed to process message {}: {:?}", message.task_id, error);
+    Ok(())
+}
+
+queue.process_messages_with_handlers(
+    "my-topic",
+    Some(3), // 3 concurrent workers
+    None,
+    process_message,
+    on_success,
+    on_error
+).await?;
+```
+
+<ParamField name="topic" type="&str">
+The name of the topic to process messages from.
+</ParamField>
+
+<ParamField name="concurrency" type="Option<usize>">
+Number of concurrent message handlers. If None, no concurrency is used.
+</ParamField>
+
+<ParamField name="consume_options" type="Option<ConsumeOptions>">
+Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
+</ParamField>
+
+<ParamField name="message_handler" type="Fn(BrokerMessage&lt;T&gt;) -> MessageFut">
+The handler function to process messages, where `MessageFut` is a Future returning `Result<R, BroccoliError>`.
+</ParamField>
+
+<ParamField name="on_success" type="Fn(BrokerMessage&lt;T&gt;, R) -> SuccessFut">
+Handler called on successful message processing, where `SuccessFut` is a Future returning `Result<(), BroccoliError>`.
+</ParamField>
+
+<ParamField name="on_error" type="Fn(BrokerMessage&lt;T&gt;, BroccoliError) -> ErrorFut">
+Handler called on message processing failure, where `ErrorFut` is a Future returning `Result<(), BroccoliError>`.
+</ParamField>
+
+<ResponseField status="Ok" type="()">
+Indicates successful completion of the processing loop.
+</ResponseField>
+
+<Note>
+Returns a `BroccoliError` if message processing fails. This function runs indefinitely unless an error occurs.
+</Note>
+
+## Management Methods
+
+### queue_status (management feature)
+
+Retrieves the status of the specified queue.
+
+```rust
+#[cfg(feature = "management")]
+use broccoli_queue::queue::BroccoliQueue;
+
+#[cfg(feature = "management")]
+let status = queue.queue_status("my-topic".to_string(), None).await?;
+println!("Queue status: {:?}", status);
+```
+
+<ParamField name="queue_name" type="String">
+The name of the queue to get status for.
+</ParamField>
+
+<ParamField name="disambiguator" type="Option<String>">
+Optional disambiguator for fairness queues.
+</ParamField>
+
+<ResponseField status="Ok" type="QueueStatus">
+Status information about the queue.
+</ResponseField>
+
+<Note>
+Only available with the "management" feature. 
+Returns a `BroccoliError` if the queue status fails to be retrieved.
+</Note>

@@ -1,0 +1,96 @@
+---
+title: "Broker Backends: Redis, RabbitMQ, and SurrealDB"
+sidebarTitle: "Brokers"
+description: "Broccoli Queue supports Redis, RabbitMQ, and SurrealDB as message broker backends. Learn how the Broker trait works and how to select a backend."
+---
+
+Broccoli Queue provides a pluggable architecture that allows you to use different message broker backends through a unified interface. The library currently supports Redis, RabbitMQ, and SurrealDB as broker implementations, each with their own strengths and use cases.
+
+## The Broker Trait
+
+All broker implementations in Broccoli Queue conform to the `Broker` trait, which defines the core functionality required for message queuing:
+
+<Tabs>
+  <Tab label="connect">
+    Establishes a connection to the broker using a URL
+  </Tab>
+  <Tab label="publish">
+    Sends messages to a specified queue/topic
+  </Tab>
+  <Tab label="try_consume">
+    Non-blocking message consumption, returns immediately if no messages available
+  </Tab>
+  <Tab label="try_consume_batch">
+    Non-blocking batch message consumption
+  </Tab>
+  <Tab label="consume">
+    Blocking message consumption, waits until a message is available
+  </Tab>
+  <Tab label="acknowledge">
+    Confirms successful message processing, removing it from the queue
+  </Tab>
+  <Tab label="reject">
+    Indicates message processing failure, triggering retry logic or dead letter queue placement
+  </Tab>
+  <Tab label="cancel">
+    Removes a message from the queue entirely
+  </Tab>
+  <Tab label="size">
+    Returns queue size information
+  </Tab>
+</Tabs>
+
+## Broker Detection and Selection
+
+Broccoli Queue automatically detects which broker implementation to use based on the URL scheme:
+
+- `redis://` → Redis broker (default, requires `redis` feature)
+- `amqp://` → RabbitMQ broker (requires `rabbitmq` feature)
+- `ws://` or `mem://` → SurrealDB broker (requires `surrealdb` feature)
+
+You can enable multiple brokers simultaneously through feature flags, and the library will select the appropriate implementation based on the URL provided to the builder.
+
+## Broker Comparison
+
+| Backend | Feature Flag | URL Scheme | Connection Pooling | Scheduling Support | Fairness Support |
+|---------|--------------|------------|-------------------|-------------------|------------------|
+| Redis | `redis` (default) | `redis://` | Yes | Yes | Yes |
+| RabbitMQ | `rabbitmq` | `amqp://` | Yes | Yes* | Limited |
+| SurrealDB | `surrealdb` | `ws://` or `mem://` | Yes | Yes | Yes |
+
+*Note: RabbitMQ scheduling requires the delayed-exchange plugin to be installed.
+
+## Feature Flags
+
+Each broker implementation is controlled by a Cargo feature flag, allowing you to include only the dependencies you need:
+
+```toml
+[dependencies]
+broccoli_queue = { version = "0.1", features = ["redis", "rabbitmq"] }
+```
+
+If you only need Redis support:
+```toml
+[dependencies]
+broccoli_queue = { version = "0.1", features = ["redis"] }
+```
+
+## Management Features
+
+Additionally, the `management` feature flag provides extended queue management capabilities through the `BrokerWithManagement` trait extension. This enables operations like checking detailed queue status and statistics:
+
+```rust
+#[cfg(feature = "management")]
+use broccoli_queue::queue::BroccoliQueue;
+
+#[cfg(feature = "management")]
+let queue = BroccoliQueue::builder("redis://localhost:6379")
+    .build()
+    .await?;
+
+// Use management capabilities
+#[cfg(feature = "management")]
+let status = queue.queue_status("my-queue".to_string(), None).await?;
+```
+
+This architecture allows Broccoli Queue to adapt to different infrastructure requirements while maintaining a consistent API for your application code.
