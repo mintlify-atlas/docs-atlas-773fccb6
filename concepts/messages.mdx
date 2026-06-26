@@ -26,6 +26,8 @@ struct BrokerMessage<T: Clone> {
 }
 ```
 
+Note: The `metadata` field is `pub(crate)` and not part of the public API.
+
 ## Payload Requirements
 
 Your message payloads must implement several traits to work with Broccoli Queue:
@@ -57,7 +59,7 @@ let message = BrokerMessage::new(payload, None);
 println!("Message ID: {}", message.task_id);
 ```
 
-Internally, messages are serialized to JSON format using the `InternalBrokerMessage` struct, which stringifies the payload for transmission through the broker.
+Internally, messages are serialized to JSON format for transmission through the broker.
 
 ## Retry Tracking
 

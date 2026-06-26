@@ -18,6 +18,12 @@ broccoli_queue = { version = "0.4", default-features = false, features = ["surre
 # broccoli_queue = { version = "0.4", default-features = false, features = ["surrealdb"] }
 ```
 
+## Dependencies
+
+The SurrealDB broker requires the following dependencies:
+- `surrealdb` with `kv-mem` feature for in-memory mode
+- `url` for parsing connection URLs
+
 ## Connection Modes
 
 SurrealDB offers two distinct connection modes:

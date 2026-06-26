@@ -69,7 +69,7 @@ use broccoli_queue::PublishOptions;
 
 let scheduled_time = OffsetDateTime::now_utc() + time::Duration::minutes(10);
 let options = PublishOptions::builder()
-    .scheduled_at(scheduled_time) // Message delivered at specific time
+    .schedule_at(scheduled_time) // Message delivered at specific time
     .build();
 
 queue.publish("my_topic", None, &message, Some(options)).await?;
@@ -118,5 +118,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 ```
 
 <Note>
-When publishing with a disambiguator (Some(String)), you're enabling fairness queuing which creates separate sub-queues for each disambiguator value. This ensures balanced processing across different tenants or entities. See the [Fairness Guide](/guides/fairness) for more details.
+When publishing with a disambiguator (`Some(String)`), you're enabling fairness queuing which creates separate sub-queues for each disambiguator value. This ensures balanced processing across different tenants or entities. See the [Fairness Guide](/guides/fairness) for more details.
 </Note>

@@ -77,7 +77,7 @@ broccoli_queue = { version = "0.1", features = ["redis"] }
 
 ## Management Features
 
-Additionally, the `management` feature flag provides extended queue management capabilities through the `BrokerWithManagement` trait extension. This enables operations like checking detailed queue status and statistics:
+Additionally, the `management` feature flag provides extended queue management capabilities through the `QueueManagement` trait. This enables operations like checking detailed queue status and statistics:
 
 ```rust
 #[cfg(feature = "management")]
@@ -92,5 +92,14 @@ let queue = BroccoliQueue::builder("redis://localhost:6379")
 #[cfg(feature = "management")]
 let status = queue.queue_status("my-queue".to_string(), None).await?;
 ```
+
+## Broker Configuration Defaults
+
+When creating a `BroccoliQueue`, the following defaults are applied unless explicitly overridden:
+
+- `retry_attempts`: 3
+- `retry_failed`: true
+- `pool_connections`: 10
+- `enable_scheduling`: false
 
 This architecture allows Broccoli Queue to adapt to different infrastructure requirements while maintaining a consistent API for your application code.

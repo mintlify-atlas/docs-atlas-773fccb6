@@ -18,6 +18,13 @@ broccoli_queue = { version = "0.4", default-features = false, features = ["rabbi
 # broccoli_queue = { version = "0.4", default-features = false, features = ["rabbitmq", "management"] }
 ```
 
+## Dependencies
+
+The RabbitMQ broker requires the following dependencies:
+- `lapin` for AMQP protocol support
+- `deadpool` for connection pooling
+- `deadpool-lapin` for integrating deadpool with lapin
+
 ## Connection Configuration
 
 Connect to RabbitMQ using AMQP URLs:

@@ -1,7 +1,7 @@
 ---
-title: "BrokerMessage — Typed Message Wrapper Reference"
+title: "BrokerMessage - Typed Message Wrapper Reference"
 sidebarTitle: "BrokerMessage"
-description: "BrokerMessage<T> is the typed wrapper for all messages in Broccoli Queue. Contains task_id, payload, attempts counter, and an optional disambiguator field."
+description: "`BrokerMessage<T>` is the typed wrapper for all messages in Broccoli Queue. Contains task_id, payload, attempts counter, and an optional disambiguator field."
 ---
 
 `BrokerMessage<T>` is the core message wrapper used throughout Broccoli Queue. It contains essential metadata required for proper message handling, including unique identification, retry tracking, and optional fairness controls. This structure is generic over the payload type `T`, allowing you to send strongly-typed messages through your queues.

@@ -19,7 +19,7 @@ queue.publish("jobs", Some("tenant-2".to_string()), &job, None).await?;
 queue.publish("jobs", Some("tenant-1".to_string()), &another_job, None).await?;
 ```
 
-Internally, this creates three separate queues:
+Internally, this creates separate queues:
 - `jobs_tenant-1_queue`
 - `jobs_tenant-1_processing`
 - `jobs_tenant-1_failed`
@@ -105,7 +105,7 @@ You can monitor fairness by checking queue sizes:
 
 ```rust
 // Get sizes of all disambiguator queues
-let queue_sizes: HashMap<String, u64> = queue.size("jobs")?;
+let queue_sizes: HashMap<String, u64> = queue.size("jobs").await?;
 println!("Queue sizes: {:?}", queue_sizes);
 
 // Example output:

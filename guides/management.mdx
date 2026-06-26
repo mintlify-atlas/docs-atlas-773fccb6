@@ -136,11 +136,11 @@ For simpler monitoring needs, use the `size` method which doesn't require the ma
 
 ```rust
 // Simple size check (no feature flag required)
-let queue_size = queue.size("jobs")?;
+let queue_size = queue.size("jobs").await?;
 println!("Jobs queue has {} messages", queue_size);
 
 // For fairness queues, returns sizes for all disambiguators
-let fairness_sizes: HashMap<String, u64> = queue.size("jobs")?;
+let fairness_sizes: HashMap<String, u64> = queue.size("jobs").await?;
 println!("Per-tenant queue sizes: {:?}", fairness_sizes);
 ```
 

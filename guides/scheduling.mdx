@@ -51,7 +51,7 @@ use time::OffsetDateTime;
 
 let scheduled_time = OffsetDateTime::now_utc() + time::Duration::hours(2);
 let options = PublishOptions::builder()
-    .scheduled_at(scheduled_time) // Deliver 2 hours from now
+    .schedule_at(scheduled_time) // Deliver 2 hours from now
     .build();
 
 queue.publish("scheduled_jobs", None, &job, Some(options)).await?;
@@ -131,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let scheduled_time = (now + time::Duration::days(1)).replace_time(time::Time::from_hms(2, 0, 0)?);
     
     let options = PublishOptions::builder()
-        .scheduled_at(scheduled_time)
+        .schedule_at(scheduled_time)
         .build();
 
     queue.publish("maintenance", None, &task, Some(options)).await?;
@@ -144,5 +144,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 </Tabs>
 
 <Note>
-Only one scheduling option should be set at a time. If both `delay` and `scheduled_at` are specified, the behavior is undefined and may vary between broker implementations.
+Only one scheduling option should be set at a time. If both `delay` and `schedule_at` are specified, the behavior is undefined and may vary between broker implementations.
 </Note>

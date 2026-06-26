@@ -25,6 +25,7 @@ Add Broccoli Queue to your `Cargo.toml` dependencies:
 broccoli_queue = "0.4.6"
 serde = { version = "1.0", features = ["derive"] }
 tokio = { version = "1.0", features = ["full"] }
+chrono = { version = "0.4", features = ["serde"] }
 ```
 
 ### Define Your Job Payload
@@ -33,13 +34,14 @@ Create a serializable struct for your job data:
 
 ```rust
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JobPayload {
     id: String,
     task_name: String,
     parameters: Parameters,
-    created_at: chrono::DateTime<chrono::Utc>,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,11 +90,13 @@ queue.publish("jobs", None, &job, None).await?;
 Process messages with a concurrent worker pool:
 
 ```rust
+use broccoli_queue::brokers::broker::BrokerMessage;
+
 queue.process_messages(
     "jobs", 
     Some(4),  // 4 concurrent workers
     None,     // default consume options
-    |msg| async move {
+    |msg: BrokerMessage<JobPayload>| async move {
         println!("Processing job: {:?}", msg);
         // Your business logic here
         Ok(())
@@ -110,13 +114,14 @@ use broccoli_queue::{
     queue::BroccoliQueue,
 };
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JobPayload {
     id: String,
     task_name: String,
     parameters: Parameters,
-    created_at: chrono::DateTime<chrono::Utc>,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,15 +160,16 @@ async fn main() -> Result<(), BroccoliError> {
 ## Complete Consumer Example
 
 ```rust
-use broccoli_queue::{error::BroccoliError, queue::BroccoliQueue};
+use broccoli_queue::{error::BroccoliError, queue::BroccoliQueue, brokers::broker::BrokerMessage};
 use serde::{Deserialize, Serialize};
+use chrono::{DateTime, Utc};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct JobPayload {
     id: String,
     task_name: String,
     parameters: Parameters,
-    created_at: chrono::DateTime<chrono::Utc>,
+    created_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -182,7 +188,7 @@ async fn main() -> Result<(), BroccoliError> {
         .await?;
 
     queue
-        .process_messages("jobs", Some(4), None, |msg| async move {
+        .process_messages("jobs", Some(4), None, |msg: BrokerMessage<JobPayload>| async move {
             println!("Processing job: {} ({})", msg.payload.id, msg.payload.task_name);
             // Simulate work
             tokio::time::sleep(std::time::Duration::from_secs(1)).await;

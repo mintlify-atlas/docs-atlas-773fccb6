@@ -18,6 +18,12 @@ broccoli_queue = { version = "0.4", features = ["redis"] }
 # broccoli_queue = { version = "0.4", default-features = false, features = ["redis"] }
 ```
 
+## Dependencies
+
+The Redis broker requires the following dependencies:
+- `bb8-redis` for connection pooling
+- `redis` crate with `tokio-rustls-comp` and `aio` features
+
 ## Connection Configuration
 
 Connect to Redis using standard URL formats:

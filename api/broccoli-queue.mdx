@@ -107,7 +107,7 @@ The message to be published, where T implements Clone + Serialize + DeserializeO
 Optional publishing options (TTL, delay, priority, etc.). See [PublishOptions](./publish-options).
 </ParamField>
 
-<ResponseField name="Ok" type="BrokerMessage&lt;T&gt;">
+<ResponseField name="returns" type="Result&lt;BrokerMessage&lt;T&gt;, BroccoliError&gt;">
 The published message with metadata.
 </ResponseField>
 
@@ -145,7 +145,7 @@ An iterator over the messages to be published.
 Optional publishing options (TTL, delay, priority, etc.). See [PublishOptions](./publish-options).
 </ParamField>
 
-<ResponseField name="Ok" type="Vec&lt;BrokerMessage&lt;T&gt;&gt;">
+<ResponseField name="returns" type="Result&lt;Vec&lt;BrokerMessage&lt;T&gt;&gt;, BroccoliError&gt;">
 A vector of published messages with metadata.
 </ResponseField>
 
@@ -175,7 +175,7 @@ The name of the topic to consume from.
 Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
 </ParamField>
 
-<ResponseField name="Ok" type="BrokerMessage&lt;T&gt;">
+<ResponseField name="returns" type="Result&lt;BrokerMessage&lt;T&gt;, BroccoliError&gt;">
 The consumed message with metadata.
 </ResponseField>
 
@@ -211,7 +211,7 @@ The timeout duration for consuming messages.
 Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
 </ParamField>
 
-<ResponseField name="Ok" type="Vec&lt;BrokerMessage&lt;T&gt;&gt;">
+<ResponseField name="returns" type="Result&lt;Vec&lt;BrokerMessage&lt;T&gt;&gt;, BroccoliError&gt;">
 A vector of consumed messages with metadata.
 </ResponseField>
 
@@ -243,7 +243,7 @@ The name of the topic to consume from.
 Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
 </ParamField>
 
-<ResponseField name="Ok" type="Option&lt;BrokerMessage&lt;T&gt;&gt;">
+<ResponseField name="returns" type="Result&lt;Option&lt;BrokerMessage&lt;T&gt;&gt;, BroccoliError&gt;">
 An option containing the consumed message if available.
 </ResponseField>
 
@@ -274,7 +274,7 @@ Maximum number of messages to try to consume.
 Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOptions](./consume-options).
 </ParamField>
 
-<ResponseField name="Ok" type="Vec&lt;BrokerMessage&lt;T&gt;&gt;">
+<ResponseField name="returns" type="Result&lt;Vec&lt;BrokerMessage&lt;T&gt;&gt;, BroccoliError&gt;">
 A vector of consumed messages (may be fewer than batch_size if fewer messages are available).
 </ResponseField>
 
@@ -304,7 +304,7 @@ The name of the topic where the message originated.
 The message to be acknowledged.
 </ParamField>
 
-<ResponseField status="Ok" type="()">
+<ResponseField name="returns" type="Result&lt;(), BroccoliError&gt;">
 Indicates successful acknowledgment.
 </ResponseField>
 
@@ -332,7 +332,7 @@ The name of the topic where the message originated.
 The message to be rejected.
 </ParamField>
 
-<ResponseField status="Ok" type="()">
+<ResponseField name="returns" type="Result&lt;(), BroccoliError&gt;">
 Indicates successful rejection.
 </ResponseField>
 
@@ -358,7 +358,7 @@ The name of the topic where the message originated.
 The ID of the message to cancel.
 </ParamField>
 
-<ResponseField status="Ok" type="()">
+<ResponseField name="returns" type="Result&lt;(), BroccoliError&gt;">
 Indicates successful cancellation.
 </ResponseField>
 
@@ -388,7 +388,7 @@ for (queue_name, size) in sizes {
 The name of the topic to get size information for.
 </ParamField>
 
-<ResponseField status="Ok" type="HashMap<String, u64>">
+<ResponseField name="returns" type="Result&lt;HashMap&lt;String, u64&gt;, BroccoliError&gt;">
 A map of queue names to their sizes.
 </ResponseField>
 
@@ -433,7 +433,7 @@ Optional consuming options (auto-ack, fairness, wait time, etc.). See [ConsumeOp
 The handler function to process messages, where `Fut` is a Future returning `Result<(), BroccoliError>`.
 </ParamField>
 
-<ResponseField status="Ok" type="()">
+<ResponseField name="returns" type="Result&lt;(), BroccoliError&gt;">
 Indicates successful completion of the processing loop.
 </ResponseField>
 
@@ -499,7 +499,7 @@ Handler called on successful message processing, where `SuccessFut` is a Future 
 Handler called on message processing failure, where `ErrorFut` is a Future returning `Result<(), BroccoliError>`.
 </ParamField>
 
-<ResponseField status="Ok" type="()">
+<ResponseField name="returns" type="Result&lt;(), BroccoliError&gt;">
 Indicates successful completion of the processing loop.
 </ResponseField>
 
@@ -530,7 +530,7 @@ The name of the queue to get status for.
 Optional disambiguator for fairness queues.
 </ParamField>
 
-<ResponseField status="Ok" type="QueueStatus">
+<ResponseField name="returns" type="Result&lt;QueueStatus, BroccoliError&gt;">
 Status information about the queue.
 </ResponseField>
 

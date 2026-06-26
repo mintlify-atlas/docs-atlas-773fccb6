@@ -1,7 +1,7 @@
 ---
-title: "Understanding the BroccoliQueue Interface"
+title: "BroccoliQueue Interface and Builder Pattern"
 sidebarTitle: "Queue"
-description: "BroccoliQueue is the central API surface in Broccoli. Learn how the builder pattern, connection pooling, and message lifecycle work together."
+description: "Learn about the BroccoliQueue interface, builder pattern, connection pooling, and message lifecycle in Broccoli Queue."
 ---
 
 The `BroccoliQueue` is the primary interface for interacting with message brokers in the Broccoli Queue library. It provides a unified API for publishing, consuming, and managing messages regardless of the underlying broker implementation (Redis, RabbitMQ, or SurrealDB). This abstraction allows you to easily switch between different brokers without changing your application logic.
@@ -51,6 +51,23 @@ The builder provides several configuration options to customize your queue behav
         
     let queue = BroccoliQueue::builder("redis://localhost:6379")
         .failed_message_retry_strategy(retry_strategy)
+        .build()
+        .await?;
+    ```
+  </Step>
+  
+  <Step>
+    <h3>SurrealDB Connection</h3>
+    <p>For SurrealDB, you can also provide an existing database connection:</p>
+    ```rust
+    use broccoli_queue::queue::BroccoliQueue;
+    use surrealdb::Surreal;
+    use surrealdb::engine::any::Any;
+    
+    let db: Surreal<Any> = Surreal::init();
+    // ... connect to database ...
+    
+    let queue = BroccoliQueue::builder_with(db)
         .build()
         .await?;
     ```
